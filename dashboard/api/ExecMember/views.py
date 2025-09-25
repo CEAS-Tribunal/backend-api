@@ -1,23 +1,25 @@
 from rest_framework.generics import GenericAPIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from dashboard.models import ExecMember
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
+from dashboard.models import ExecMember, ExecRole
 from .serializers import ExecMemberSerializer
 
+import pandas as pd
+
 class ExecMemberView(GenericAPIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [AllowAny]
     serializer_class = ExecMemberSerializer
     queryset = ExecMember.objects.all()
     
     def get(self, request):
-        members = ExecMember.objects.values_list('name', flat=True)
+        roleId = request.query_params.get('roleId')
+        role = ExecRole.objects.get(id=roleId)
+        members = pd.DataFrame(role.ExecMember.values())
 
-        formatted_output = {
-            'members': list(members),
-        }
+        members =  members.to_dict(orient='records')
         
-        return Response(formatted_output, status=status.HTTP_200_OK)
+        return Response(members, status=status.HTTP_200_OK)
     def post(self, request):
         serializer = ExecMemberSerializer(data=request.data)
         if serializer.is_valid():

@@ -1,22 +1,55 @@
 from rest_framework.generics import GenericAPIView 
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from dashboard.models import ExecRole 
 from .serializers import ExecRoleSerializer
+import pandas as pd
 
 class ExecRoleView(GenericAPIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [AllowAny]
     serializer_class = ExecRoleSerializer
     queryset = ExecRole.objects.all()
     
     def get(self, request):
-        roles = ExecRole.objects.values_list('role', flat=True)
+        roles = ExecRole.objects.values()
+        df = pd.DataFrame(roles)
+        pres = df[df['committee'] == 'pres']
+        cos = df[df['committee'] == 'cos']
+        vpe = df[df['committee'] == 'vpe']
+        vpca = df[df['committee'] == 'vpca']
 
-        formatted_output = {
-            'roles': list(roles),
-        }
-        
+        formatted_output = [
+            {
+            "id": "president",
+            "color": 'indigo',
+            "title": "Officers",
+            "subtitle": "Leads the organization setting team strategy, alignment and success. Serves as the main point of contact with administration, faculty and other organizations",
+            'roles': pres[['id', 'role', 'description']].sort_values('role').to_dict(orient='records'),
+            },
+            {
+                "id": 'cos',
+                "color": 'teal',
+                "title": "Chief of Staff",
+                "subtitle": "Executive Role",
+                'roles': cos[['id',  'role',  'description']].sort_values('role').to_dict(orient='records'),
+            },
+            {
+                "id": 'vpca',
+                "color": 'rose',
+                "title": "Vice President of Collegiate Affairs",
+                "subtitle": "Executive Role",
+                'roles': vpca[['id',  'role',  'description']].sort_values('role').to_dict(orient='records'),
+            },
+            {
+                "id": 'vpe',
+                "color": 'sky',
+                "title": "Vice President of Events",
+                "subtitle": "Executive Role",
+                'roles': vpe[['id',  'role',  'description']].sort_values('role').to_dict(orient='records'),
+            },
+        ]
+
         return Response(formatted_output, status=status.HTTP_200_OK)
     def post(self, request):
         serializer = ExecRoleSerializer(data=request.data)

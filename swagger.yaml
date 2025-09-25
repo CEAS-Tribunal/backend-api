@@ -9,10 +9,10 @@ servers:
     description: API base URL
 
 tags:
-  - name: member
-    description: something
-  - name: role
-    description: something else
+  - name: Member
+    description: Access to Member Data
+  - name: Role
+    description: Access to Role Data
   - name: reimbursement
     description: else
   - name: Resume Review Day
@@ -26,8 +26,6 @@ components:
       bearerFormat: JWT
 
   schemas:
-    # NO MORE PROGRESS
-
     ExecMember:
       type: object
       properties:
@@ -38,7 +36,8 @@ components:
         name:
           type: string
           maxLength: 30
-          # major
+        major:
+          type: string
         email:
           type: string
           format: email
@@ -47,8 +46,11 @@ components:
           format: uri
           nullable: true
       required:
+        - id
         - name
+        - major
         - email
+        - imgURL
 
     ExecRole:
       type: object
@@ -67,9 +69,10 @@ components:
             type: string
             description: ExecMember IDs
       required:
+        - id
         - role
         - description
-
+        - ExecMember
     Reimbursement:
        type: object
        properties:
@@ -99,9 +102,18 @@ components:
          type:
            type: string
        required:
-         - all
-
-
+         - id
+         - name
+         - position
+         - email
+         - mid
+         - vendorID
+         - date
+         - vendor
+         - amount
+         - description
+         - status
+         - type
     ResumeReviewDayStudents:
        type: object
        properties:
@@ -116,7 +128,7 @@ components:
            type: string
          year:
            type: string
-         company_id:
+         companyID:
            type: string
          time:
            type: string
@@ -127,8 +139,15 @@ components:
          signUpTime:
            type: string
        required:
-         - all
-
+         - id
+         - name
+         - email
+         - major
+         - year
+         - companyID
+         - timeslot
+         - resume
+         - signUpTime
     ResumeReviewDayEmployers:
       type: object
       properties:
@@ -160,15 +179,55 @@ components:
         signUpTime:
           type: string
       required:
-        - all
+        - id
+        - name
+        - email
+        - company
+        - phone
+        - review_method
+        - diet
+        - start
+        - end
+        - maxResumes
+        - alumnus
+        - majors
+        - signUpTime
+    CompanyReps:
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        company:
+          type: string
+        title:
+          type: string
+        email:
+          type: string
+        boothLocation:
+          type: string
+        signInTime:
+          type: string
+        printed:
+          type: boolean
+        location:
+          type: string
+      required:
+        - id
+        - name
+        - company
+        - title
+        - email
+        - boothLocation
+        - signInTime
+        - printed
+        - location
     Error:
       type: object
       properties:
         error:
           type: object
           description: Error details
-
-
 
 security:
   - BearerAuth: []
@@ -177,7 +236,7 @@ paths:
   /exec-member/:
     get:
       tags:
-        - member
+        - Member
       summary: Get all executive members
       description: Retrieves a list of all executive member names
       responses:
@@ -199,7 +258,7 @@ paths:
 
     post:
       tags:
-        - member
+        - Member
       summary: Create a new executive member
       description: Creates a new executive member entry
       requestBody:
@@ -234,7 +293,7 @@ paths:
 
     put:
       tags:
-        - member
+        - Member
       summary: Update an executive member
       description: Updates an existing executive member's information
       requestBody:
@@ -278,7 +337,7 @@ paths:
 
     delete:
       tags:
-        - member
+        - Member
       summary: Delete an executive member
       description: Deletes an existing executive member
       requestBody:
@@ -315,7 +374,7 @@ paths:
   /exec-role/:
     get:
       tags:
-        - role
+        - Role
       summary: Get all executive roles
       description: Retrieves a list of all executive role names
       responses:
@@ -337,7 +396,7 @@ paths:
 
     post:
       tags:
-        - role
+        - Role
       summary: Create a new executive role
       description: Creates a new executive role entry
       requestBody:
@@ -372,7 +431,7 @@ paths:
 
     put:
       tags:
-        - role
+        - Role
       summary: Update an executive role
       description: Updates an existing executive role's information
       requestBody:
@@ -416,7 +475,7 @@ paths:
 
     delete:
       tags:
-        - role
+        - Role
       summary: Delete an executive role
       description: Deletes an existing executive role
       requestBody:
@@ -451,7 +510,6 @@ paths:
           description: Forbidden - Admin access required
 
   /reimbursement/:
-    # PDF RESPONSE OF RECENT ENTRIES
     post:
       tags:
         - reimbursement
@@ -486,6 +544,14 @@ paths:
           description: Unauthorized
         '403':
           description: Forbidden - Admin access required
+
+    /reimbursement/
+
+  /employer-info/:
+    get:
+      tags:
+        - Resume Review Day
+
 
     # RESUME REVIEW DAY
     # STUDENT POST
