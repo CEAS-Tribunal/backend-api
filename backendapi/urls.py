@@ -20,6 +20,7 @@ urlpatterns = [
     
     path('admin/', admin.site.urls),
     path('dashboard/', include('dashboard.urls'), name='dashboard'),
+    path('api/resume-review-day/', include('ResumeReviewDay.urls'), name='dashboard'),
     
     # JWT Authentication endpoints
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),

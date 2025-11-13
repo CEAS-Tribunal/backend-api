@@ -32,9 +32,12 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',  # JWT authentication
     'drf_spectacular',  # Swagger/OpenAPI documentation
     'corsheaders',
+    'multiselectfield',
+    "phonenumber_field",
 
     # Apps
     'dashboard',
+    'ResumeReviewDay',
 ]
 
 # drf-spectacular settings
@@ -153,6 +156,8 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'static'
+MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = 'media/'
 
 # CORS settings
 

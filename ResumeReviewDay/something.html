@@ -1,0 +1,123 @@
+        <form>
+          <h3>Select your preferred review method:</h3>
+          <div class="radio-select-container"></div>
+
+          <div class="main-form-area">
+            <input type="text" id="name" name="name" placeholder="Full Name" autocomplete="off" aria-label="Name" required />
+
+            <input type="text" id="company" name="company" placeholder="Company Name" autocomplete="off" aria-label="Company Name" required />
+
+            <input type="email" id="email" name="email" placeholder="Email" autocomplete="off" aria-label="Email" required />
+
+            <input type="text" id="phone" name="phone" placeholder="Phone Number (xxx-xxx-xxxx)" autocomplete="off" aria-label="Phone" required />
+
+            <input
+              type="text"
+              id="dietary"
+              name="dietary"
+              placeholder="Dietary Restrictions (if applicable)"
+              autocomplete="off"
+              aria-label="Dietary Restrictions"
+            />
+
+            <div class="time-select-container">
+              <div class="select-container" id="start-time">
+                <label for="start-time-select">Start Time:</label>
+                <i class="dropdown fas fa-chevron-circle-down" aria-hidden="true"></i>
+                <select id="start-time-select" autocomplete="off" required>
+                  <option value="" disabled="disabled" selected="selected">Select Time</option>
+                </select>
+              </div>
+
+              <div class="select-container" id="end-time">
+                <label for="end-time-select">End Time:</label>
+                <i class="dropdown fas fa-chevron-circle-down" aria-hidden="true"></i>
+                <select id="end-time-select" autocomplete="off" required>
+                  <option value="" disabled="disabled" selected="selected">Select Time</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="review-count-slider-container">
+              <label for="review-count-slider">Maximum résumés to review: <span class="max-review-count">20</span></label>
+              <input type="range" min="1" max="20" value="20" class="slider" id="review-count-slider" />
+            </div>
+
+            <label for="alumnus">UC Alumnus</label>
+            <input type="checkbox" class="form-checkbox" id="alumnus" />
+
+            <h3>Select your major(s) of interest:</h3>
+            <div class="majors-container"></div>
+
+            <input type="button" value="Sign Up" id="sign-up-button" />
+            <div class="loader lds-ellipsis">
+              <div></div>
+              <div></div>
+              <div></div>
+              <div></div>
+            </div>
+          </div>
+        </form>
+
+
+
+        <form class="filter-form">
+                <div class="select-container" id="major-select">
+                    <i class="dropdown fas fa-chevron-circle-down" aria-hidden="true"></i>
+                    <select autocomplete="off" required>
+                        <option value="" disabled="disabled" selected="selected">Select Major</option>
+                    </select>
+                </div>
+
+                <div class="select-container" id="time-select">
+                    <i class="dropdown fas fa-chevron-circle-down" aria-hidden="true"></i>
+                    <select autocomplete="off" required>
+                        <option value="" disabled="disabled" selected="selected">Select Time</option>
+                    </select>
+                </div>
+
+                <div class="select-container" id="review-method-select">
+                    <i class="dropdown fas fa-chevron-circle-down" aria-hidden="true"></i>
+                    <select required>
+                        <option value="" disabled="disabled" selected="selected">Select Review Method</option>
+                    </select>
+                </div>
+    
+                <input type="button" value="Filter" id="filter-button">
+            </form>
+
+<div class="register">
+        <div class="container">
+            <h2 id="register-title">Confirm Your Review Slot <i class="far fa-calendar-check"></i></h3> 
+            
+            <form>
+                <p class=>You have selected to receive your resume review with <span class="selected-company-name">Company A</span> <span class="review-method-text"></span>. If you would like to change your review slot, you can <a href="#timeslot-title">go back and select a different one</a>, otherwise, you can continue to register.</p>
+
+                <input type="text" id="name" name="name" placeholder="Full Name" autocomplete="off" required>
+
+                <input type="email" id="email" name="email" placeholder="Email" autocomplete="off" required>
+
+                <div class="select-container" id="year-select">
+                    <i class="dropdown fas fa-chevron-circle-down" aria-hidden="true"></i>
+                    <select required>
+                        <option value="" disabled="disabled" selected="selected">Select Graduation Year</option>
+                    </select>
+                </div>
+
+                <div class="select-container" id="student-major-select">
+                    <i class="dropdown fas fa-chevron-circle-down" aria-hidden="true"></i>
+                    <select required>
+                        <option value="" disabled="disabled" selected="selected">Select Major</option>
+                    </select>
+                </div>
+
+                <label for="resume-file" class="file-upload">
+                    <input type="file" id="resume-file" accept=".pdf">
+                    <div class="file-text"><i class="fas fa-file-upload"></i> <span>Upload Resume</span></div>
+                </label>
+
+                <input type="button" value="Register" id="register-button">
+                <div class="loader lds-ellipsis"><div></div><div></div><div></div><div></div></div>
+            </form>
+        </div>
+    </div>
