@@ -19,8 +19,8 @@ urlpatterns = [
     path('redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
     
     path('admin/', admin.site.urls),
-    path('dashboard/', include('dashboard.urls'), name='dashboard'),
-    path('api/resume-review-day/', include('ResumeReviewDay.urls'), name='dashboard'),
+    path('api/dashboard/', include('dashboard.urls'), name='dashboard'),
+    path('api/resume-review-day/', include('ResumeReviewDay.urls'), name='resume-review-day'),
     
     # JWT Authentication endpoints
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
