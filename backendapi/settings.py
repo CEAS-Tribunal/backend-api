@@ -19,6 +19,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-this-in-production-
 DEBUG = int(os.getenv('DEBUG', 0))
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ORIGINS').split(',')
 
 # Application definition
 INSTALLED_APPS = [
