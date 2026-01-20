@@ -33,7 +33,7 @@ class Employer(models.Model):
     end_time = models.TimeField()
     max_resumes = models.IntegerField(validators=[MaxValueValidator(100)]) 
     uc_alumni = models.BooleanField()
-    selected_majors = MultiSelectField(choices=MAJOR_CHOICES)
+    selected_majors = MultiSelectField(choices=MAJOR_CHOICES, max_length=200)
     
     def __str__(self) -> str:
         return f"{self.full_name} - {self.company_name}"

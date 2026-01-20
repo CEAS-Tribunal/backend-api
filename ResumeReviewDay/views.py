@@ -26,6 +26,9 @@ class EmployerViewSet(APIView):
             uc_alumni = bool(request.data.get("uc_alumni"))
             selected_majors = request.data.get("selected_majors", [])
 
+            print(selected_majors)
+
+
             # Parse times (optional: add error checking)
             start_time = datetime.strptime(start_time, "%H:%M").time()
             end_time = datetime.strptime(end_time, "%H:%M").time()
@@ -50,6 +53,8 @@ class EmployerViewSet(APIView):
                 uc_alumni=uc_alumni,
                 selected_majors=selected_majors,
             )
+
+            print(employer)
             
             for i in range(interval_count):
                Timeslot.objects.create(
@@ -59,6 +64,7 @@ class EmployerViewSet(APIView):
 
             return Response({'message': 'Employer and Timeslots created!', 'id': employer.id}, status=status.HTTP_201_CREATED)
         except Exception as e:
+            print(e)
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class StudentViewSet(APIView):
