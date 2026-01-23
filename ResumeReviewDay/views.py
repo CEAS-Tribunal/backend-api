@@ -70,6 +70,13 @@ class EmployerViewSet(APIView):
 class StudentViewSet(APIView):
     permission_classes = [AllowAny]
 
+    '''
+    def get(self, request):
+        major = request.data.get('major')
+        time = request.data.get('time')
+        interview_method = request.data.get('interview_method')
+    '''
+
     def post(self, request):
         try:
             full_name = request.data.get("full_name")
@@ -137,4 +144,4 @@ class TimeslotViewSet(APIView):
                 ]
             }
             results.append(data)
-        return Response(results)
+        return Response(results, status=status.HTTP_200_OK)
