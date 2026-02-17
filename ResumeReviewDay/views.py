@@ -51,7 +51,6 @@ class EmployerViewSet(APIView):
                 selected_majors=selected_majors,
             )
 
-            print(employer)
             
             for i in range(interval_count):
                Timeslot.objects.create(
@@ -61,7 +60,6 @@ class EmployerViewSet(APIView):
 
             return Response({'message': 'Employer and Timeslots created!', 'id': employer.id}, status=status.HTTP_201_CREATED)
         except Exception as e:
-            print(e)
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class StudentViewSet(APIView):
@@ -123,11 +121,9 @@ def _time_matches(t, allowed):
     """Compare time t to list of allowed times by hour/minute (avoids microsecond mismatch from DB)."""
     list_of_matches = []
     for a in allowed:
-        print(t.hour, t.minute, a.hour, a.minute)
         if t.hour == a.hour and t.minute == a.minute:
             list_of_matches.append(True)
 
-    print(list_of_matches)
     return any(list_of_matches)
 
 
@@ -172,7 +168,6 @@ class TimeslotViewSet(APIView):
         for employer in employers:
             employer_timeslots = Timeslot.objects.filter(employer=employer, student__isnull=True).all()
             slots = _slots_for_employer(employer_timeslots, times_filter) if employer_timeslots else []
-            print(slots)
             if slots:
                 results.append({
                     "id": employer.id,
@@ -181,6 +176,5 @@ class TimeslotViewSet(APIView):
                     "timeslots": slots,
                 })
 
-        print(results)
 
         return Response(results, status=status.HTTP_200_OK)

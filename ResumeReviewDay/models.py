@@ -48,7 +48,11 @@ class Student(models.Model):
     
     def __str__(self) -> str:
         return f"{self.full_name} - {self.major}"
-   
+
+    def delete(self):
+            self.timeslots.all().delete()
+            self.resume.delete()
+            super().delete()
    
 class Timeslot(models.Model):
     id = models.CharField(primary_key=True, default=cuid.cuid, max_length=25)
