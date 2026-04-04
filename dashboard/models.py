@@ -2,7 +2,6 @@ from django.db import models
 import cuid
 
 
-
 class ExecMember(models.Model):
     id = models.CharField(primary_key=True, default=cuid.cuid, max_length=25)
     name = models.CharField(max_length=30, null=False)

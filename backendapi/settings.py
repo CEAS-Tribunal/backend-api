@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     # Apps
     'dashboard',
     'ResumeReviewDay',
+    'reimbursement',
 ]
 
 # drf-spectacular settings
