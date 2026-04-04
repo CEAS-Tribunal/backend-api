@@ -26,9 +26,6 @@ class EmployerViewSet(APIView):
             uc_alumni = bool(request.data.get("uc_alumni"))
             selected_majors = request.data.get("selected_majors", [])
 
-            print(selected_majors)
-
-
             # Parse times (optional: add error checking)
             start_time = datetime.strptime(start_time, "%H:%M").time()
             end_time = datetime.strptime(end_time, "%H:%M").time()
@@ -54,7 +51,6 @@ class EmployerViewSet(APIView):
                 selected_majors=selected_majors,
             )
 
-            print(employer)
             
             for i in range(interval_count):
                Timeslot.objects.create(
@@ -64,7 +60,6 @@ class EmployerViewSet(APIView):
 
             return Response({'message': 'Employer and Timeslots created!', 'id': employer.id}, status=status.HTTP_201_CREATED)
         except Exception as e:
-            print(e)
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class StudentViewSet(APIView):
@@ -108,33 +103,78 @@ class StudentViewSet(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         
+def _parse_time_string(s):
+    """Parse '9:00 AM' or 'HH:MM' style string to time object."""
+    from datetime import datetime
+    s = (s or "").strip()
+    if not s:
+        return None
+    for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt).time()
+        except ValueError:
+            continue
+    return None
+
+
+def _time_matches(t, allowed):
+    """Compare time t to list of allowed times by hour/minute (avoids microsecond mismatch from DB)."""
+    list_of_matches = []
+    for a in allowed:
+        if t.hour == a.hour and t.minute == a.minute:
+            list_of_matches.append(True)
+
+    return any(list_of_matches)
+
+
+def _parse_time_params(time_params):
+    """Parse query time strings into a list of time objects. Returns empty list if none valid."""
+    return [t for t in (_parse_time_string(p) for p in time_params) if t is not None]
+
+
+def _format_slot(timeslot_obj):
+    """Format a Timeslot instance as API dict with id and formatted timeslot string."""
+    ts = timeslot_obj.timeslot
+    if hasattr(ts, "hour"):
+        h, m = ts.hour, ts.minute
+        time_str = f"{h % 12 or 12}:{m:02d} {'AM' if h < 12 else 'PM'}"
+    else:
+        time_str = str(ts)
+    return {"id": timeslot_obj.id, "timeslot": time_str}
+
+
+def _slots_for_employer(employer_timeslots, times_filter):
+    """Build list of slot dicts for an employer, optionally filtered by times_filter."""
+    if times_filter:
+        return [_format_slot(t) for t in employer_timeslots if _time_matches(t.timeslot, times_filter)]
+    return [_format_slot(t) for t in employer_timeslots]
+
+
 class TimeslotViewSet(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        major = request.data.get("major")
-        time = request.data.get("time")  # should be 'HH:MM' string if being passed
-        
+        major = request.query_params.get("major")
+        time_params = request.query_params.getlist("time")
+        times_filter = _parse_time_params(time_params)
+
+
+
         employers = Employer.objects.all()
         if major:
             employers = employers.filter(selected_majors__contains=major)
-
-        # Prepare results
+        
         results = []
         for employer in employers:
-            # Filter timeslots for this employer, unassigned, and by time if provided
-            timeslot_filter = {'employer': employer, 'student__isnull': True}
-            if time:
-                timeslot_filter['timeslot'] = time
+            employer_timeslots = Timeslot.objects.filter(employer=employer, student__isnull=True).all()
+            slots = _slots_for_employer(employer_timeslots, times_filter) if employer_timeslots else []
+            if slots:
+                results.append({
+                    "id": employer.id,
+                    "full_name": employer.full_name,
+                    "company_name": employer.company_name,
+                    "timeslots": slots,
+                })
 
-            available_timeslots = Timeslot.objects.filter(**timeslot_filter)
-            data = {
-                'id': employer.id,
-                'full_name': employer.full_name,
-                'company_name': employer.company_name,
-                'timeslots': [
-                    {'id': t.id, 'timeslot': t.timeslot} for t in available_timeslots 
-                ]
-            }
-            results.append(data)
-        return Response(results)
+
+        return Response(results, status=status.HTTP_200_OK)
