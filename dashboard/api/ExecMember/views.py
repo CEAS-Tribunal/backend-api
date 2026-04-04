@@ -1,25 +1,33 @@
 from rest_framework.generics import GenericAPIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
+from rest_framework.permissions import AllowAny
 from dashboard.models import ExecMember, ExecRole
 from .serializers import ExecMemberSerializer
 
-import pandas as pd
 
 class ExecMemberView(GenericAPIView):
     permission_classes = [AllowAny]
     serializer_class = ExecMemberSerializer
     queryset = ExecMember.objects.all()
-    
-    def get(self, request):
-        roleId = request.query_params.get('roleId')
-        role = ExecRole.objects.get(id=roleId)
-        members = pd.DataFrame(role.ExecMember.values())
 
-        members =  members.to_dict(orient='records')
-        
-        return Response(members, status=status.HTTP_200_OK)
+    def get(self, request):
+        role_id = request.query_params.get('roleId')
+        if not role_id:
+            return Response(
+                {'error': 'roleId is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            role = ExecRole.objects.get(id=role_id)
+        except ExecRole.DoesNotExist:
+            return Response(
+                {'error': 'Role not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        members = role.ExecMember.all()
+        data = ExecMemberSerializer(members, many=True).data
+        return Response(data, status=status.HTTP_200_OK)
     def post(self, request):
         serializer = ExecMemberSerializer(data=request.data)
         if serializer.is_valid():
@@ -39,7 +47,6 @@ class ExecMemberView(GenericAPIView):
                 'error': 'Member ID is required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        print(member_id)
         try:
             member = ExecMember.objects.get(id=member_id)
             serializer = ExecMemberSerializer(member, data=request.data, partial=True)

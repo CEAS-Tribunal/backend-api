@@ -1,56 +1,85 @@
-from rest_framework.generics import GenericAPIView 
+from rest_framework.generics import GenericAPIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
-from dashboard.models import ExecRole 
+from rest_framework.permissions import AllowAny
+from dashboard.models import ExecRole
+from dashboard.api.ExecMember.serializers import ExecMemberSerializer
 from .serializers import ExecRoleSerializer
-import pandas as pd
+
 
 class ExecRoleView(GenericAPIView):
     permission_classes = [AllowAny]
     serializer_class = ExecRoleSerializer
     queryset = ExecRole.objects.all()
-    
-    def get(self, request):
-        roles = ExecRole.objects.values()
-        df = pd.DataFrame(roles)
-        pres = df[df['committee'] == 'pres']
-        cos = df[df['committee'] == 'cos']
-        vpe = df[df['committee'] == 'vpe']
-        vpca = df[df['committee'] == 'vpca']
 
-        formatted_output = [
+    def get(self, request):
+        include_members = request.query_params.get("include_members", "").lower() in ("true", "1", "yes")
+        sections = [
             {
-            "id": "president",
-            "color": 'indigo',
-            "title": "Officers",
-            "subtitle": "Leads the organization setting team strategy, alignment and success. Serves as the main point of contact with administration, faculty and other organizations",
-            'roles': pres[['id', 'role', 'description']].sort_values('role').to_dict(orient='records'),
+                "id": "president",
+                "color": "indigo",
+                "title": "Officers",
+                "subtitle": "Executive Role",
+                "roles": self._roles_for_committee("pres", include_members),
             },
             {
-                "id": 'cos',
-                "color": 'teal',
+                "id": "cos",
+                "color": "teal",
                 "title": "Chief of Staff",
                 "subtitle": "Executive Role",
-                'roles': cos[['id',  'role',  'description']].sort_values('role').to_dict(orient='records'),
+                "roles": self._roles_for_committee("cos", include_members),
             },
             {
-                "id": 'vpca',
-                "color": 'rose',
+                "id": "vpca",
+                "color": "rose",
                 "title": "Vice President of Collegiate Affairs",
                 "subtitle": "Executive Role",
-                'roles': vpca[['id',  'role',  'description']].sort_values('role').to_dict(orient='records'),
+                "roles": self._roles_for_committee("vpca", include_members),
             },
             {
-                "id": 'vpe',
-                "color": 'sky',
+                "id": "vpe",
+                "color": "sky",
                 "title": "Vice President of Events",
                 "subtitle": "Executive Role",
-                'roles': vpe[['id',  'role',  'description']].sort_values('role').to_dict(orient='records'),
+                "roles": self._roles_for_committee("vpe", include_members),
             },
         ]
+        return Response(sections, status=status.HTTP_200_OK)
 
-        return Response(formatted_output, status=status.HTTP_200_OK)
+    # Preferred order for role names (first in list = first on page). Others stay alphabetical after these.
+    ROLE_DISPLAY_ORDER = [
+        "President",
+        "Chief of Staff",
+        "Vice President of Events",
+        "Vice President of Collegiate Affairs",
+        "Treasurer",
+        "Senators",
+        "Partnership Development",
+    ]
+
+    def _roles_for_committee(self, committee_value, include_members):
+        qs = ExecRole.objects.filter(committee=committee_value).order_by("role")
+        if include_members:
+            qs = qs.prefetch_related("ExecMember__user")
+        roles = []
+        for role in qs:
+            payload = {"id": role.id, "role": role.role, "description": role.description}
+            if include_members:
+                members = role.ExecMember.all()
+                payload["members"] = ExecMemberSerializer(members, many=True).data
+            roles.append(payload)
+        # Sort: preferred order first, then the rest alphabetically by role name
+        order_map = {name: i for i, name in enumerate(self.ROLE_DISPLAY_ORDER)}
+
+        def sort_key(item):
+            name = item["role"]
+            if name in order_map:
+                return (0, order_map[name])
+            return (1, name.lower())
+
+        roles.sort(key=sort_key)
+        return roles
+
     def post(self, request):
         serializer = ExecRoleSerializer(data=request.data)
         if serializer.is_valid():
