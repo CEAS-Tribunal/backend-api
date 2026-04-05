@@ -1,18 +1,52 @@
 from rest_framework.views import APIView 
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny
 
-from .models import Employer, Student, Timeslot
+from dashboard.permissions import IsStaffUser
+
+from .models import Employer, Student, Timeslot, MAJOR_CHOICES
 
 from datetime import datetime, timedelta
 import pandas as pd
+
+_MAJOR_LABEL = dict(MAJOR_CHOICES)
+
+
+def _format_time_12h(t):
+    """Format datetime.time as e.g. '9:00 AM' (cross-platform; avoids %-I in strftime)."""
+    if t is None:
+        return ""
+    if hasattr(t, "hour"):
+        h, m = t.hour, t.minute
+        return f"{h % 12 or 12}:{m:02d} {'AM' if h < 12 else 'PM'}"
+    return str(t)
+
 
 class EmployerViewSet(APIView):
     permission_classes = [AllowAny]
     '''
         Adds an employer to the list of employers
     '''
+
+    def get(self, request):
+        """Public list of registered employers with available slot counts."""
+        employers = Employer.objects.all().order_by("company_name")
+        results = []
+        for emp in employers:
+            available = Timeslot.objects.filter(employer=emp, student__isnull=True).count()
+            labels = [_MAJOR_LABEL.get(code, code) for code in emp.selected_majors]
+            results.append(
+                {
+                    "id": emp.id,
+                    "full_name": emp.full_name,
+                    "company_name": emp.company_name,
+                    "selected_majors": labels,
+                    "available_slots": available,
+                }
+            )
+        return Response(results, status=status.HTTP_200_OK)
+
     def post(self, request):
         try:
             full_name = request.data.get("full_name")
@@ -22,7 +56,7 @@ class EmployerViewSet(APIView):
             diet_restriction = request.data.get("diet_restriction", "")
             start_time = request.data.get("start_time")  # Expecting 'HH:MM' string
             end_time = request.data.get("end_time")
-            max_resumes = int(request.data.get("max_resumes"))
+            max_resumes_raw = request.data.get("max_resumes")
             uc_alumni = bool(request.data.get("uc_alumni"))
             selected_majors = request.data.get("selected_majors", [])
 
@@ -37,6 +71,12 @@ class EmployerViewSet(APIView):
             # Get the interval in minutes
             total_minutes = int((end_dt - start_dt).total_seconds() / 60)
             interval_count = total_minutes // 20
+
+            # Capacity label for admin roster; defaults to number of 20-min slots (capped at 100).
+            if max_resumes_raw is None or max_resumes_raw == "":
+                max_resumes = min(interval_count, 100) if interval_count > 0 else 100
+            else:
+                max_resumes = int(max_resumes_raw)
 
             employer = Employer.objects.create(
                 full_name=full_name,
@@ -61,6 +101,56 @@ class EmployerViewSet(APIView):
             return Response({'message': 'Employer and Timeslots created!', 'id': employer.id}, status=status.HTTP_201_CREATED)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AdminResumeRosterView(APIView):
+    """Staff-only roster of all RRD employers, timeslots, and assigned students."""
+
+    permission_classes = [IsAuthenticated, IsStaffUser]
+
+    def get(self, request):
+        employers = (
+            Employer.objects.prefetch_related("timeslot_set", "timeslot_set__student")
+            .all()
+            .order_by("company_name")
+        )
+        results = []
+        for emp in employers:
+            slots = []
+            for slot in emp.timeslot_set.all().order_by("timeslot"):
+                student = slot.student
+                slots.append(
+                    {
+                        "slot_id": slot.id,
+                        "time": _format_time_12h(slot.timeslot),
+                        "student": (
+                            {
+                                "id": student.id,
+                                "full_name": student.full_name,
+                                "email": student.email,
+                                "major": _MAJOR_LABEL.get(student.major, student.major),
+                                "grad_year": student.grad_year,
+                            }
+                            if student
+                            else None
+                        ),
+                    }
+                )
+            results.append(
+                {
+                    "id": emp.id,
+                    "full_name": emp.full_name,
+                    "company_name": emp.company_name,
+                    "email": emp.email,
+                    "selected_majors": [_MAJOR_LABEL.get(c, c) for c in emp.selected_majors],
+                    "start_time": _format_time_12h(emp.start_time),
+                    "end_time": _format_time_12h(emp.end_time),
+                    "max_resumes": emp.max_resumes,
+                    "slots": slots,
+                }
+            )
+        return Response(results, status=status.HTTP_200_OK)
+
 
 class StudentViewSet(APIView):
     permission_classes = [AllowAny]
