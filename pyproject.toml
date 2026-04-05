@@ -12,6 +12,7 @@ dependencies = [
     "django-cors-headers==4.3.0",
     "django-multiselectfield==1.0.1",
     "django-phonenumber-field==8.3.0",
+    "django-storages[s3]>=1.14",
     "djangorestframework==3.14.0",
     "djangorestframework-simplejwt==5.3.0",
     "dotenv==0.9.9",

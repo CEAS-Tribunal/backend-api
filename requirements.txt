@@ -9,6 +9,12 @@ attrs==25.3.0
     #   backend-api
     #   jsonschema
     #   referencing
+boto3==1.42.83
+    # via django-storages
+botocore==1.42.83
+    # via
+    #   boto3
+    #   s3transfer
 cuid==0.3
     # via backend-api
 django==5.2.11
@@ -17,6 +23,7 @@ django==5.2.11
     #   django-cors-headers
     #   django-multiselectfield
     #   django-phonenumber-field
+    #   django-storages
     #   djangorestframework
     #   djangorestframework-simplejwt
     #   drf-spectacular
@@ -26,6 +33,8 @@ django-cors-headers==4.3.0
 django-multiselectfield==1.0.1
     # via backend-api
 django-phonenumber-field==8.3.0
+    # via backend-api
+django-storages==1.14.6
     # via backend-api
 djangorestframework==3.14.0
     # via
@@ -48,6 +57,10 @@ inflection==0.5.1
     #   backend-api
     #   drf-spectacular
     #   drf-yasg
+jmespath==1.1.0
+    # via
+    #   boto3
+    #   botocore
 jsonschema==4.23.0
     # via
     #   backend-api
@@ -82,6 +95,7 @@ pyjwt==2.9.0
 python-dateutil==2.9.0.post0
     # via
     #   backend-api
+    #   botocore
     #   pandas
 python-dotenv==1.1.0
     # via
@@ -108,6 +122,8 @@ rpds-py==0.24.0
     #   backend-api
     #   jsonschema
     #   referencing
+s3transfer==0.16.0
+    # via boto3
 setuptools==80.9.0
     # via backend-api
 six==1.17.0
@@ -131,5 +147,7 @@ uritemplate==4.1.1
     #   backend-api
     #   drf-spectacular
     #   drf-yasg
+urllib3==2.6.3
+    # via botocore
 whitenoise==6.11.0
     # via backend-api

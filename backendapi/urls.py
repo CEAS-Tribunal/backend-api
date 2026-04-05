@@ -1,8 +1,11 @@
+import re
+
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import path, include
 from django.http import HttpResponse
+from django.urls import include, path, re_path
+from django.views.static import serve
 from rest_framework_simplejwt.views import TokenVerifyView
 
 from dashboard.api.Auth.jwt_views import (
@@ -32,6 +35,19 @@ urlpatterns = [
     path('api/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
 ]
 
-# User-uploaded media (e.g. FileField in admin). Only active when DEBUG is True;
-# see https://docs.djangoproject.com/en/5.2/howto/static-files/#serving-files-uploaded-by-a-user-during-development
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# User-uploaded media (e.g. FileField in admin).
+# DEBUG: django.contrib.staticfiles helper.
+# Production without S3: serve from disk (e.g. Render). Set AWS_STORAGE_BUCKET_NAME for durable object storage.
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+elif not getattr(settings, "USE_S3_MEDIA", False):
+    _media_prefix = (settings.MEDIA_URL or "").lstrip("/")
+    if _media_prefix and not _media_prefix.endswith("/"):
+        _media_prefix = f"{_media_prefix}/"
+    urlpatterns += [
+        re_path(
+            rf"^{re.escape(_media_prefix)}(?P<path>.*)$",
+            serve,
+            {"document_root": settings.MEDIA_ROOT},
+        ),
+    ]

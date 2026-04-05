@@ -28,7 +28,9 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-this-in-production-
 DEBUG = int(os.getenv('DEBUG', 0))
 
 ALLOWED_HOSTS = _csv_env("ALLOWED_HOSTS")
-CORS_ALLOWED_ORIGINS = _csv_env("CORS_ORIGINS")
+# Canonical: CORS_ORIGINS. Accept CORS_ORIGIN (singular) so dashboard typos still work.
+_cors_raw = os.getenv("CORS_ORIGINS") or os.getenv("CORS_ORIGIN") or ""
+CORS_ALLOWED_ORIGINS = [x.strip() for x in _cors_raw.split(",") if x.strip()]
 
 # CORS: allow-all only in DEBUG (local). Production/staging must list origins (e.g. Vercel).
 if DEBUG:
@@ -37,7 +39,7 @@ else:
     CORS_ALLOW_ALL_ORIGINS = False
     if not CORS_ALLOWED_ORIGINS:
         raise ImproperlyConfigured(
-            "Set CORS_ORIGINS to a comma-separated list of frontend origins (e.g. your Vercel URLs). "
+            "Set CORS_ORIGINS (comma-separated frontend origins, e.g. https://your-app.vercel.app). "
             "CORS_ALLOW_ALL_ORIGINS is disabled when DEBUG=0."
         )
 
@@ -49,6 +51,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'storages',
     'rest_framework',  # Django REST framework
     'rest_framework_simplejwt',  # JWT authentication
     'drf_spectacular',  # Swagger/OpenAPI documentation
@@ -163,6 +166,8 @@ def _database_from_url(url: str) -> dict:
 # Database — prefer DATABASE_URL (Neon console "connection string") for Render/staging.
 # Falls back to split env vars (DB_USERNAME, DB_PASSWORD, DB_URL=host, DB_HOST=port).
 _database_url = (os.getenv("DATABASE_URL") or "").strip()
+if len(_database_url) >= 2 and _database_url[0] == _database_url[-1] and _database_url[0] in "\"'":
+    _database_url = _database_url[1:-1].strip()
 if _database_url:
     DATABASES = {"default": _database_from_url(_database_url)}
 else:
@@ -231,15 +236,59 @@ USE_TZ = True
 STATIC_URL = '/static/' if not DEBUG else 'static/'
 STATIC_ROOT = BASE_DIR / 'static'
 MEDIA_ROOT = BASE_DIR / 'media'
-MEDIA_URL = 'media/'
+# Leading slash so FileField/admin links resolve from site root (not under /admin/...).
+MEDIA_URL = '/media/'
+
+# User uploads (e.g. ResumeReviewDay resumes). Vercel serverless has a read-only app dir
+# (/var/task); use S3-compatible storage when AWS_STORAGE_BUCKET_NAME is set.
+# See https://vercel.com/docs/functions/runtimes/python (bundle is read-only at runtime).
+_AWS_BUCKET = (os.getenv("AWS_STORAGE_BUCKET_NAME") or "").strip()
+USE_S3_MEDIA = bool(_AWS_BUCKET)
+
+if USE_S3_MEDIA:
+    AWS_STORAGE_BUCKET_NAME = _AWS_BUCKET
+    AWS_S3_REGION_NAME = (os.getenv("AWS_S3_REGION_NAME") or "us-east-1").strip() or "us-east-1"
+    _endpoint = (os.getenv("AWS_S3_ENDPOINT_URL") or "").strip()
+    if _endpoint:
+        AWS_S3_ENDPOINT_URL = _endpoint
+    _custom_domain = (os.getenv("AWS_S3_CUSTOM_DOMAIN") or "").strip()
+    if _custom_domain:
+        AWS_S3_CUSTOM_DOMAIN = _custom_domain
+    # Credentials: set on Vercel/Render; omit only if your runtime provides IAM (e.g. AWS Lambda).
+    _ak = (os.getenv("AWS_ACCESS_KEY_ID") or "").strip()
+    _sk = (os.getenv("AWS_SECRET_ACCESS_KEY") or "").strip()
+    if _ak:
+        AWS_ACCESS_KEY_ID = _ak
+    if _sk:
+        AWS_SECRET_ACCESS_KEY = _sk
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = True
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_S3_OBJECT_PARAMETERS = {"CacheControl": "max-age=86400"}
+    _media_url_override = (os.getenv("MEDIA_URL") or "").strip()
+    if _media_url_override:
+        MEDIA_URL = _media_url_override if _media_url_override.endswith("/") else f"{_media_url_override}/"
+    elif _custom_domain:
+        MEDIA_URL = f"https://{_custom_domain}/"
+    else:
+        MEDIA_URL = f"https://{_AWS_BUCKET}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/"
+
+_default_file_backend = (
+    "storages.backends.s3boto3.S3Boto3Storage" if USE_S3_MEDIA else "django.core.files.storage.FileSystemStorage"
+)
 
 if not DEBUG:
     STORAGES = {
-        'default': {
-            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        "default": {"BACKEND": _default_file_backend},
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
-        'staticfiles': {
-            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    }
+elif USE_S3_MEDIA:
+    STORAGES = {
+        "default": {"BACKEND": _default_file_backend},
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
         },
     }
 
