@@ -247,10 +247,21 @@ USE_S3_MEDIA = bool(_AWS_BUCKET)
 
 if USE_S3_MEDIA:
     AWS_STORAGE_BUCKET_NAME = _AWS_BUCKET
-    AWS_S3_REGION_NAME = (os.getenv("AWS_S3_REGION_NAME") or "us-east-1").strip() or "us-east-1"
     _endpoint = (os.getenv("AWS_S3_ENDPOINT_URL") or "").strip()
     if _endpoint:
         AWS_S3_ENDPOINT_URL = _endpoint
+    _region_env = (os.getenv("AWS_S3_REGION_NAME") or "").strip()
+    if _region_env:
+        AWS_S3_REGION_NAME = _region_env
+    elif _endpoint and "r2.cloudflarestorage.com" in _endpoint.lower():
+        # Cloudflare R2: boto3 expects region "auto" (not an AWS region). See R2 S3 API docs.
+        AWS_S3_REGION_NAME = "auto"
+    else:
+        AWS_S3_REGION_NAME = "us-east-1"
+    # R2 rejects SigV2 query URLs; django-storages/botocore must use SigV4 for presigned links.
+    # https://django-storages.readthedocs.io/en/latest/backends/amazon-S3.html#settings
+    _sig = (os.getenv("AWS_S3_SIGNATURE_VERSION") or "s3v4").strip() or "s3v4"
+    AWS_S3_SIGNATURE_VERSION = _sig
     _custom_domain = (os.getenv("AWS_S3_CUSTOM_DOMAIN") or "").strip()
     if _custom_domain:
         AWS_S3_CUSTOM_DOMAIN = _custom_domain
@@ -270,6 +281,9 @@ if USE_S3_MEDIA:
         MEDIA_URL = _media_url_override if _media_url_override.endswith("/") else f"{_media_url_override}/"
     elif _custom_domain:
         MEDIA_URL = f"https://{_custom_domain}/"
+    elif _endpoint:
+        # S3-compatible endpoint (R2, MinIO, etc.): avoid bogus *.amazonaws.com when region is "auto".
+        MEDIA_URL = f"{_endpoint.rstrip('/')}/{_AWS_BUCKET}/"
     else:
         MEDIA_URL = f"https://{_AWS_BUCKET}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/"
 
