@@ -7,6 +7,7 @@ class ExecMember(models.Model):
     id = models.CharField(primary_key=True, default=cuid.cuid, max_length=25)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     imgURL = models.URLField(null=True, blank=True)
+    must_change_password = models.BooleanField(default=True)
 
     def __str__(self) -> str:
         return self.user.get_full_name()
