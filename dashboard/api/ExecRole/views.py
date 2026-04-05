@@ -1,16 +1,22 @@
 from rest_framework.generics import GenericAPIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
+
+from dashboard.permissions import IsStaffUser
 from dashboard.models import ExecRole
 from dashboard.api.ExecMember.serializers import ExecMemberSerializer
 from .serializers import ExecRoleSerializer
 
 
 class ExecRoleView(GenericAPIView):
-    permission_classes = [AllowAny]
     serializer_class = ExecRoleSerializer
     queryset = ExecRole.objects.all()
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [AllowAny()]
+        return [IsAuthenticated(), IsStaffUser()]
 
     def get(self, request):
         include_members = request.query_params.get("include_members", "").lower() in ("true", "1", "yes")
