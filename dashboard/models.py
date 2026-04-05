@@ -1,15 +1,15 @@
 from django.db import models
 import cuid
-
+from django.contrib.auth.models import User
 
 class ExecMember(models.Model):
     id = models.CharField(primary_key=True, default=cuid.cuid, max_length=25)
-    name = models.CharField(max_length=30, null=False)
-    email = models.EmailField(null=False)
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
     imgURL = models.URLField(null=True, blank=True)
+    must_change_password = models.BooleanField(default=True)
 
     def __str__(self) -> str:
-        return self.name
+        return self.user.get_full_name()
 
 class ExecRole(models.Model):
     COMMITTEE_CHOICES = [
@@ -30,7 +30,7 @@ class ExecRole(models.Model):
         if not members:
             return self.role
         
-        member_names = [member.name for member in members]
+        member_names = [str(member) for member in members]
         if len(member_names) == 1:
             return f"{self.role} - {member_names[0]}"
         

@@ -4,6 +4,9 @@ Django settings for backendapi project.
 
 from pathlib import Path
 import os
+from urllib.parse import parse_qsl, unquote, urlparse
+
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -12,14 +15,33 @@ load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def _csv_env(name: str, default: str = "") -> list[str]:
+    raw = os.getenv(name, default) or ""
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-this-in-production-environment')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = int(os.getenv('DEBUG', 0))
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ORIGINS').split(',')
+ALLOWED_HOSTS = _csv_env("ALLOWED_HOSTS")
+# Canonical: CORS_ORIGINS. Accept CORS_ORIGIN (singular) so dashboard typos still work.
+_cors_raw = os.getenv("CORS_ORIGINS") or os.getenv("CORS_ORIGIN") or ""
+CORS_ALLOWED_ORIGINS = [x.strip() for x in _cors_raw.split(",") if x.strip()]
+
+# CORS: allow-all only in DEBUG (local). Production/staging must list origins (e.g. Vercel).
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
+    if not CORS_ALLOWED_ORIGINS:
+        raise ImproperlyConfigured(
+            "Set CORS_ORIGINS (comma-separated frontend origins, e.g. https://your-app.vercel.app). "
+            "CORS_ALLOW_ALL_ORIGINS is disabled when DEBUG=0."
+        )
 
 # Application definition
 INSTALLED_APPS = [
@@ -29,6 +51,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'storages',
     'rest_framework',  # Django REST framework
     'rest_framework_simplejwt',  # JWT authentication
     'drf_spectacular',  # Swagger/OpenAPI documentation
@@ -40,6 +63,7 @@ INSTALLED_APPS = [
     'dashboard',
     'ResumeReviewDay',
     'reimbursement',
+    'career_fair',
 ]
 
 # drf-spectacular settings
@@ -99,17 +123,66 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backendapi.wsgi.application'
 
-# Database
-DATABASES = {
-    'default': {
-       'ENGINE': 'django.db.backends.postgresql',
-       'NAME': 'postgres',
-       'USER': os.getenv("DB_USERNAME"),
-       'PASSWORD': os.getenv("DB_PASSWORD"),
-       'HOST': os.getenv("DB_URL"),
-       'PORT': os.getenv("DB_HOST"),
-    },
-}
+
+def _merge_pg_options(options: dict, host: str = "") -> dict:
+    """
+    For non-pooler Postgres, set search_path=public when needed after odd restores.
+
+    Neon's *pooled* endpoint rejects startup option search_path — use a direct host
+    for migrate or omit this on -pooler hosts.
+    https://neon.tech/docs/connect/connection-errors#unsupported-startup-parameter
+    """
+    out = dict(options)
+    host_l = (host or "").lower()
+    is_neon_pooler = "-pooler" in host_l
+    if is_neon_pooler:
+        return out
+    existing = (out.get("options") or "").strip()
+    if "search_path" not in existing:
+        suffix = "-c search_path=public,pg_catalog"
+        out["options"] = f"{existing} {suffix}".strip() if existing else suffix
+    return out
+
+
+def _database_from_url(url: str) -> dict:
+    """Parse a PostgreSQL URI (e.g. Neon) into Django DATABASES['default']."""
+    tmp = urlparse(url)
+    name = (tmp.path or "").lstrip("/") or "postgres"
+    host = tmp.hostname or ""
+    options = _merge_pg_options(
+        dict(parse_qsl(tmp.query, keep_blank_values=True)),
+        host=host,
+    )
+    return {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": name,
+        "USER": unquote(tmp.username) if tmp.username else "",
+        "PASSWORD": unquote(tmp.password) if tmp.password else "",
+        "HOST": host,
+        "PORT": tmp.port or 5432,
+        "OPTIONS": options,
+    }
+
+
+# Database — prefer DATABASE_URL (Neon console "connection string") for Render/staging.
+# Falls back to split env vars (DB_USERNAME, DB_PASSWORD, DB_URL=host, DB_HOST=port).
+_database_url = (os.getenv("DATABASE_URL") or "").strip()
+if len(_database_url) >= 2 and _database_url[0] == _database_url[-1] and _database_url[0] in "\"'":
+    _database_url = _database_url[1:-1].strip()
+if _database_url:
+    DATABASES = {"default": _database_from_url(_database_url)}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("DB_NAME", "postgres"),
+            "USER": os.getenv("DB_USERNAME"),
+            "PASSWORD": os.getenv("DB_PASSWORD"),
+            "HOST": os.getenv("DB_URL"),
+            "PORT": os.getenv("DB_HOST"),
+            "OPTIONS": _merge_pg_options({}, host=os.getenv("DB_URL", "") or ""),
+        },
+    }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -118,12 +191,16 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 6},
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
     },
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+    {
+        'NAME': 'dashboard.validators.TribunalPasswordValidator',
     },
 ]
 
@@ -157,23 +234,90 @@ LANGUAGE_CODE = os.getenv('LANGUAGE_CODE', 'en-us')
 TIME_ZONE = os.getenv('TIME_ZONE', 'UTC')
 USE_I18N = True
 USE_TZ = True
-STATIC_URL = 'static/'
+STATIC_URL = '/static/' if not DEBUG else 'static/'
 STATIC_ROOT = BASE_DIR / 'static'
 MEDIA_ROOT = BASE_DIR / 'media'
-MEDIA_URL = 'media/'
+# Leading slash so FileField/admin links resolve from site root (not under /admin/...).
+MEDIA_URL = '/media/'
 
-# CORS settings
+# User uploads (e.g. ResumeReviewDay resumes). Vercel serverless has a read-only app dir
+# (/var/task); use S3-compatible storage when AWS_STORAGE_BUCKET_NAME is set.
+# See https://vercel.com/docs/functions/runtimes/python (bundle is read-only at runtime).
+_AWS_BUCKET = (os.getenv("AWS_STORAGE_BUCKET_NAME") or "").strip()
+USE_S3_MEDIA = bool(_AWS_BUCKET)
 
-CORS_ALLOW_ALL_ORIGINS = True
+if USE_S3_MEDIA:
+    AWS_STORAGE_BUCKET_NAME = _AWS_BUCKET
+    _endpoint = (os.getenv("AWS_S3_ENDPOINT_URL") or "").strip()
+    if _endpoint:
+        AWS_S3_ENDPOINT_URL = _endpoint
+    _region_env = (os.getenv("AWS_S3_REGION_NAME") or "").strip()
+    if _region_env:
+        AWS_S3_REGION_NAME = _region_env
+    elif _endpoint and "r2.cloudflarestorage.com" in _endpoint.lower():
+        # Cloudflare R2: boto3 expects region "auto" (not an AWS region). See R2 S3 API docs.
+        AWS_S3_REGION_NAME = "auto"
+    else:
+        AWS_S3_REGION_NAME = "us-east-1"
+    # R2 rejects SigV2 query URLs; django-storages/botocore must use SigV4 for presigned links.
+    # https://django-storages.readthedocs.io/en/latest/backends/amazon-S3.html#settings
+    _sig = (os.getenv("AWS_S3_SIGNATURE_VERSION") or "s3v4").strip() or "s3v4"
+    AWS_S3_SIGNATURE_VERSION = _sig
+    _custom_domain = (os.getenv("AWS_S3_CUSTOM_DOMAIN") or "").strip()
+    if _custom_domain:
+        AWS_S3_CUSTOM_DOMAIN = _custom_domain
+    # Credentials: set on Vercel/Render; omit only if your runtime provides IAM (e.g. AWS Lambda).
+    _ak = (os.getenv("AWS_ACCESS_KEY_ID") or "").strip()
+    _sk = (os.getenv("AWS_SECRET_ACCESS_KEY") or "").strip()
+    if _ak:
+        AWS_ACCESS_KEY_ID = _ak
+    if _sk:
+        AWS_SECRET_ACCESS_KEY = _sk
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = True
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_S3_OBJECT_PARAMETERS = {"CacheControl": "max-age=86400"}
+    _media_url_override = (os.getenv("MEDIA_URL") or "").strip()
+    if _media_url_override:
+        MEDIA_URL = _media_url_override if _media_url_override.endswith("/") else f"{_media_url_override}/"
+    elif _custom_domain:
+        MEDIA_URL = f"https://{_custom_domain}/"
+    elif _endpoint:
+        # S3-compatible endpoint (R2, MinIO, etc.): avoid bogus *.amazonaws.com when region is "auto".
+        MEDIA_URL = f"{_endpoint.rstrip('/')}/{_AWS_BUCKET}/"
+    else:
+        MEDIA_URL = f"https://{_AWS_BUCKET}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/"
 
-# CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
-# CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',')
+_default_file_backend = (
+    "storages.backends.s3boto3.S3Boto3Storage" if USE_S3_MEDIA else "django.core.files.storage.FileSystemStorage"
+)
+
+if not DEBUG:
+    STORAGES = {
+        "default": {"BACKEND": _default_file_backend},
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+elif USE_S3_MEDIA:
+    STORAGES = {
+        "default": {"BACKEND": _default_file_backend},
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+
+# Trusted origins for CSRF (admin POST, etc.) — include https://<your-service>.onrender.com on Render.
+CSRF_TRUSTED_ORIGINS = _csv_env("CSRF_TRUSTED_ORIGINS")
 
 # Security settings
 if not DEBUG:
     SECURE_SSL_REDIRECT = bool(int(os.getenv('SECURE_SSL_REDIRECT', 0)))
     SESSION_COOKIE_SECURE = bool(int(os.getenv('SESSION_COOKIE_SECURE', 1)))
     CSRF_COOKIE_SECURE = bool(int(os.getenv('CSRF_COOKIE_SECURE', 1)))
+    # Render terminates TLS; forward proto so request.is_secure() and secure cookies behave.
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    USE_X_FORWARDED_HOST = True
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
