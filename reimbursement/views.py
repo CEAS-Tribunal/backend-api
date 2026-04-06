@@ -30,7 +30,8 @@ def _exec_position(user) -> str:
 class ReimbursementRequestCreateView(APIView):
     """
     Staff-only: create a reimbursement row from multipart form data.
-    Member fields come from the JWT user and reimbursement UserProfile.
+    Member identity fields come from the JWT user and reimbursement UserProfile;
+    M number is supplied by the client per request.
     """
 
     permission_classes = [IsStaffUser]
@@ -46,7 +47,7 @@ class ReimbursementRequestCreateView(APIView):
             return Response(
                 {
                     "detail": "No reimbursement profile for this account. "
-                    "Ask the treasurer to add your vendor ID and M number."
+                    "Ask the treasurer to add your vendor ID."
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -63,7 +64,7 @@ class ReimbursementRequestCreateView(APIView):
             name=_display_name(user),
             position=_exec_position(user),
             email=user.email.strip(),
-            m_number=profile.m_number,
+            m_number=data["m_number"].strip(),
             vendor_id=profile.vendor_id,
             date=data["date"],
             vendor_name=data["vendor_name"].strip(),
