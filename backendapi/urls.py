@@ -28,6 +28,7 @@ urlpatterns = [
     path('dashboard/', include('dashboard.urls'), name='dashboard'),
     path('api/resume-review-day/', include('ResumeReviewDay.urls'), name='resume-review-day'),
     path('api/career-fair/', include('career_fair.urls'), name='career-fair'),
+    path('api/reimbursement/', include('reimbursement.urls'), name='reimbursement'),
 
     # JWT Authentication endpoints (staff-only issuance; see StaffOnlyTokenObtainPairSerializer)
     path('api/token/', StaffOnlyTokenObtainPairView.as_view(), name='token_obtain_pair'),

@@ -2,7 +2,6 @@ from django.db import models
 import cuid
 from django.contrib.auth.models import User
 
-
 class ExecMember(models.Model):
     id = models.CharField(primary_key=True, default=cuid.cuid, max_length=25)
     user = models.OneToOneField(User, on_delete=models.CASCADE)

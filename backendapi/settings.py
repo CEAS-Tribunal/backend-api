@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     # Apps
     'dashboard',
     'ResumeReviewDay',
+    'reimbursement',
     'career_fair',
 ]
 
