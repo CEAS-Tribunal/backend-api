@@ -9,7 +9,6 @@ class UserProfile(models.Model):
         related_name="reimbursement_profile",
     )
     vendor_id = models.CharField(max_length=255, unique=True)
-    m_number = models.CharField(max_length=255, unique=True)
 
     def __str__(self) -> str:
         return f"{self.user.username} - {self.vendor_id}"

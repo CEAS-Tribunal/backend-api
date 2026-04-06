@@ -20,7 +20,6 @@ def _csv_env(name: str, default: str = "") -> list[str]:
     raw = os.getenv(name, default) or ""
     return [x.strip() for x in raw.split(",") if x.strip()]
 
-
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-this-in-production-environment')
 
