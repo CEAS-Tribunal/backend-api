@@ -186,3 +186,62 @@ class CreateExecUserCommandTests(TestCase):
         with mock.patch.dict(os.environ, {"TRIBUNAL_INITIAL_PASSWORD": ""}):
             with self.assertRaises(CommandError):
                 call_command("create_exec_user", "unique99901", verbosity=0)
+
+
+@override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"])
+class ResetNonSuperuserPasswordsCommandTests(TestCase):
+    def test_resets_only_non_superusers(self):
+        su = User.objects.create_user(username="super1", password="keepme1")
+        su.is_staff = True
+        su.is_superuser = True
+        su.save(update_fields=["is_staff", "is_superuser"])
+
+        st = User.objects.create_user(username="staff1", password="oldstaff")
+        st.is_staff = True
+        st.save(update_fields=["is_staff"])
+
+        plain = User.objects.create_user(username="plain1", password="oldplain")
+        plain.is_staff = False
+        plain.save(update_fields=["is_staff"])
+
+        out = StringIO()
+        with mock.patch.dict(os.environ, {"TRIBUNAL_RESET_PASSWORD": "ceastribunal"}):
+            call_command("reset_non_superuser_passwords", stdout=out, stderr=StringIO())
+
+        su.refresh_from_db()
+        st.refresh_from_db()
+        plain.refresh_from_db()
+        self.assertTrue(su.check_password("keepme1"))
+        self.assertTrue(st.check_password("ceastribunal"))
+        self.assertTrue(plain.check_password("ceastribunal"))
+
+    def test_dry_run_does_not_change_passwords(self):
+        u = User.objects.create_user(username="dry1", password="secret99")
+        u.is_staff = True
+        u.save(update_fields=["is_staff"])
+        with mock.patch.dict(os.environ, {"TRIBUNAL_RESET_PASSWORD": "ceastribunal"}):
+            call_command("reset_non_superuser_passwords", "--dry-run", verbosity=0)
+        u.refresh_from_db()
+        self.assertTrue(u.check_password("secret99"))
+
+    def test_requires_env_var(self):
+        with mock.patch.dict(os.environ, {"TRIBUNAL_RESET_PASSWORD": ""}):
+            with self.assertRaises(CommandError):
+                call_command("reset_non_superuser_passwords", verbosity=0)
+
+    def test_exclude_usernames_env_skips_those_users(self):
+        u1 = User.objects.create_user(username="resetme", password="old1")
+        u2 = User.objects.create_user(username="keepme", password="old2")
+        for u in (u1, u2):
+            u.is_staff = True
+            u.save(update_fields=["is_staff"])
+        env = {
+            "TRIBUNAL_RESET_PASSWORD": "ceastribunal",
+            "TRIBUNAL_PASSWORD_RESET_EXCLUDE_USERNAMES": "keepme",
+        }
+        with mock.patch.dict(os.environ, env):
+            call_command("reset_non_superuser_passwords", verbosity=0)
+        u1.refresh_from_db()
+        u2.refresh_from_db()
+        self.assertTrue(u1.check_password("ceastribunal"))
+        self.assertTrue(u2.check_password("old2"))
