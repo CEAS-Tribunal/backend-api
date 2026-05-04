@@ -27,6 +27,10 @@ class ReimbursementRequest(models.Model):
     reimbursement_type = models.CharField(max_length=255)
     itemized_receipt = models.FileField(upload_to='itemized_receipts/', null=True, blank=True)
     supporting_document = models.FileField(upload_to='supporting_documents/', null=True, blank=True)
+    filed = models.BooleanField(
+        default=False,
+        help_text="Treasurer: set when this reimbursement has been filed with the university.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

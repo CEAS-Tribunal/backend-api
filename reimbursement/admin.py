@@ -21,9 +21,10 @@ class ReimbursementRequestAdmin(admin.ModelAdmin):
         "vendor_id",
         "amount",
         "reimbursement_type",
+        "filed",
         "created_at",
     )
-    list_filter = ("reimbursement_type", "budgeted")
+    list_filter = ("reimbursement_type", "budgeted", "filed")
     search_fields = ("name", "email", "vendor_id", "m_number")
     ordering = ("-created_at",)
     readonly_fields = ("created_at", "updated_at")

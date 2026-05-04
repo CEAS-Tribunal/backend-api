@@ -1,13 +1,18 @@
+from django.db.models import Q
 from rest_framework import status
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from dashboard.models import ExecMember
-from dashboard.permissions import IsStaffUser
+from dashboard.permissions import IsStaffUser, IsTreasurerOrSuperuserStaff
 
 from .models import ReimbursementRequest, UserProfile
-from .serializers import ReimbursementRequestCreateSerializer
+from .serializers import (
+    ReimbursementRequestCreateSerializer,
+    ReimbursementRequestFiledPatchSerializer,
+    ReimbursementRequestListSerializer,
+)
 
 
 def _display_name(user) -> str:
@@ -83,3 +88,67 @@ class ReimbursementRequestCreateView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class ReimbursementRequestListView(APIView):
+    """
+    Staff-only: list reimbursement requests with optional filters.
+    """
+
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        qs = ReimbursementRequest.objects.all().order_by("-created_at", "-id")
+
+        filed_raw = request.query_params.get("filed")
+        if filed_raw is not None:
+            s = filed_raw.strip().lower()
+            if s in ("1", "true", "yes"):
+                qs = qs.filter(filed=True)
+            elif s in ("0", "false", "no"):
+                qs = qs.filter(filed=False)
+
+        reimbursement_type = (request.query_params.get("reimbursement_type") or "").strip()
+        if reimbursement_type:
+            qs = qs.filter(reimbursement_type__icontains=reimbursement_type)
+
+        search = (request.query_params.get("search") or "").strip()
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search)
+                | Q(email__icontains=search)
+                | Q(vendor_name__icontains=search)
+                | Q(m_number__icontains=search)
+                | Q(vendor_id__icontains=search)
+                | Q(description__icontains=search)
+            )
+
+        data = ReimbursementRequestListSerializer(
+            qs,
+            many=True,
+            context={"request": request},
+        ).data
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class ReimbursementRequestFiledUpdateView(APIView):
+    """
+    Treasurer or superuser: set whether a reimbursement has been filed.
+    """
+
+    permission_classes = [IsTreasurerOrSuperuserStaff]
+    parser_classes = [JSONParser]
+
+    def patch(self, request, pk):
+        try:
+            req = ReimbursementRequest.objects.get(pk=pk)
+        except ReimbursementRequest.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        serializer = ReimbursementRequestFiledPatchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        req.filed = serializer.validated_data["filed"]
+        req.save(update_fields=["filed", "updated_at"])
+
+        out = ReimbursementRequestListSerializer(req, context={"request": request}).data
+        return Response(out, status=status.HTTP_200_OK)

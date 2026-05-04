@@ -8,6 +8,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from dashboard.models import ExecMember, ExecRole
+
 from reimbursement.models import ReimbursementRequest, UserProfile
 
 User = get_user_model()
@@ -115,3 +117,106 @@ class ReimbursementRequestCreateAPITests(TestCase):
         }
         r = self.client.post("/api/reimbursement/", payload, format="multipart")
         self.assertEqual(r.status_code, status.HTTP_403_FORBIDDEN)
+
+
+@override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"])
+class ReimbursementRequestListAndFiledAPITests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.staff = User.objects.create_user(
+            username="staffer",
+            email="staff@test.edu",
+            password="pass12345",
+        )
+        self.staff.is_staff = True
+        self.staff.save(update_fields=["is_staff"])
+        UserProfile.objects.create(user=self.staff, vendor_id="V-STAFF")
+
+        self.treasurer_user = User.objects.create_user(
+            username="treasurer1",
+            email="t@test.edu",
+            password="pass12345",
+        )
+        self.treasurer_user.is_staff = True
+        self.treasurer_user.save(update_fields=["is_staff"])
+        em = ExecMember.objects.create(user=self.treasurer_user, must_change_password=False)
+        role = ExecRole.objects.create(
+            role="Treasurer",
+            description="Finance",
+            committee="pres",
+        )
+        role.ExecMember.add(em)
+
+        refresh = RefreshToken.for_user(self.staff)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+
+        self.req = ReimbursementRequest.objects.create(
+            name="Pat",
+            position="VP",
+            email="pat@test.edu",
+            m_number="M111",
+            vendor_id="V-1",
+            date="2026-04-01",
+            vendor_name="Store",
+            amount=Decimal("10.00"),
+            description="Snacks",
+            budgeted=True,
+            reimbursement_type="Food",
+            filed=False,
+        )
+
+    def test_list_staff_ok(self):
+        r = self.client.get("/api/reimbursement/requests/")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(r.data), 1)
+        self.assertEqual(r.data[0]["id"], self.req.id)
+        self.assertFalse(r.data[0]["filed"])
+
+    def test_list_filter_filed(self):
+        self.req.filed = True
+        self.req.save(update_fields=["filed"])
+        r = self.client.get("/api/reimbursement/requests/?filed=true")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(r.data), 1)
+        r2 = self.client.get("/api/reimbursement/requests/?filed=false")
+        self.assertEqual(r2.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(r2.data), 0)
+
+    def test_patch_filed_treasurer_ok(self):
+        refresh = RefreshToken.for_user(self.treasurer_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+        r = self.client.patch(
+            f"/api/reimbursement/requests/{self.req.id}/filed/",
+            {"filed": True},
+            format="json",
+        )
+        self.assertEqual(r.status_code, status.HTTP_200_OK, r.data)
+        self.assertTrue(r.data["filed"])
+        self.req.refresh_from_db()
+        self.assertTrue(self.req.filed)
+
+    def test_patch_filed_non_treasurer_forbidden(self):
+        r = self.client.patch(
+            f"/api/reimbursement/requests/{self.req.id}/filed/",
+            {"filed": True},
+            format="json",
+        )
+        self.assertEqual(r.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_patch_filed_superuser_ok(self):
+        su = User.objects.create_user(
+            username="adminx",
+            email="a@test.edu",
+            password="pass12345",
+        )
+        su.is_staff = True
+        su.is_superuser = True
+        su.save(update_fields=["is_staff", "is_superuser"])
+        refresh = RefreshToken.for_user(su)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+        r = self.client.patch(
+            f"/api/reimbursement/requests/{self.req.id}/filed/",
+            {"filed": True},
+            format="json",
+        )
+        self.assertEqual(r.status_code, status.HTTP_200_OK, r.data)

@@ -77,3 +77,7 @@ htmlcov/
 .coverage.*
 coverage.xml
 *.cover
+
+*db.json
+*.env
+media/
