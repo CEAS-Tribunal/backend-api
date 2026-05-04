@@ -78,6 +78,7 @@ htmlcov/
 coverage.xml
 *.cover
 
+Dockerfile
 *db.json
 *.env
 media/
