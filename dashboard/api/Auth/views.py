@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from dashboard.models import ExecMember
+from dashboard.permissions import user_is_treasurer
 
 from .serializers import ChangePasswordSerializer
 
@@ -37,6 +38,7 @@ class AuthMeView(APIView):
                 "is_staff": user.is_staff,
                 "is_superuser": user.is_superuser,
                 "is_exec": is_exec,
+                "is_treasurer": user_is_treasurer(user),
             },
             status=status.HTTP_200_OK,
         )

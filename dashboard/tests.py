@@ -11,7 +11,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import ExecMember
+from .models import ExecMember, ExecRole
 
 
 @override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"])
@@ -44,6 +44,19 @@ class DashboardAuthAPITests(TestCase):
         self.assertTrue(r.data["is_staff"])
         self.assertFalse(r.data["is_superuser"])
         self.assertTrue(r.data["is_exec"])
+        self.assertFalse(r.data["is_treasurer"])
+
+    def test_me_is_treasurer_when_exec_has_treasurer_role(self):
+        role = ExecRole.objects.create(
+            role="Treasurer",
+            description="Finance",
+            committee="pres",
+        )
+        role.ExecMember.add(self.exec_member)
+        self._auth_headers()
+        r = self.client.get("/dashboard/auth/me/")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertTrue(r.data["is_treasurer"])
 
     def test_me_without_exec_member(self):
         lone = User.objects.create_user(username="norole", password="pass12345")
@@ -55,6 +68,7 @@ class DashboardAuthAPITests(TestCase):
         self.assertFalse(r.data["must_change_password"])
         self.assertTrue(r.data["is_staff"])
         self.assertFalse(r.data["is_exec"])
+        self.assertFalse(r.data["is_treasurer"])
 
     def test_post_token_non_staff_forbidden(self):
         outsider = User.objects.create_user(username="outsider", password="pass12345")

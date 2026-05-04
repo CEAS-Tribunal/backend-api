@@ -50,7 +50,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'storages',
     'rest_framework',  # Django REST framework
     'rest_framework_simplejwt',  # JWT authentication
     'drf_spectacular',  # Swagger/OpenAPI documentation
@@ -162,24 +161,41 @@ def _database_from_url(url: str) -> dict:
         "OPTIONS": options,
     }
 
-
-# Database — prefer DATABASE_URL (Neon console "connection string") for Render/staging.
-# Falls back to split env vars (DB_USERNAME, DB_PASSWORD, DB_URL=host, DB_HOST=port).
+# Database
+# Prefer DATABASE_URL when set; otherwise use split env vars.
+# Split vars supported (recommended):
+# - DB_HOST, DB_PORT, DB_NAME, DB_USERNAME, DB_PASSWORD
+# Back-compat (older envs in this repo):
+# - DB_URL (host), DB_HOST (port)
 _database_url = (os.getenv("DATABASE_URL") or "").strip()
 if len(_database_url) >= 2 and _database_url[0] == _database_url[-1] and _database_url[0] in "\"'":
     _database_url = _database_url[1:-1].strip()
+
+_db_host_raw = (os.getenv("DB_HOST") or "").strip()
+_db_port_raw = (os.getenv("DB_PORT") or "").strip()
+_db_name = (os.getenv("DB_NAME") or "postgres").strip() or "postgres"
+_db_user = (os.getenv("DB_USERNAME") or "").strip()
+_db_pass = (os.getenv("DB_PASSWORD") or "").strip()
+
 if _database_url:
     DATABASES = {"default": _database_from_url(_database_url)}
+elif _db_host_raw.lower().startswith(("postgres://", "postgresql://")):
+    # Allow DB_HOST to carry a full connection string when people copy/paste it.
+    DATABASES = {"default": _database_from_url(_db_host_raw)}
 else:
+    # Back-compat: DB_URL=host, DB_HOST=port
+    _legacy_host = (os.getenv("DB_URL") or "").strip()
+    _host = _db_host_raw or _legacy_host
+    _port = _db_port_raw or (os.getenv("DB_HOST") or "").strip()
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.getenv("DB_NAME", "postgres"),
-            "USER": os.getenv("DB_USERNAME"),
-            "PASSWORD": os.getenv("DB_PASSWORD"),
-            "HOST": os.getenv("DB_URL"),
-            "PORT": os.getenv("DB_HOST"),
-            "OPTIONS": _merge_pg_options({}, host=os.getenv("DB_URL", "") or ""),
+            "NAME": _db_name,
+            "USER": _db_user or None,
+            "PASSWORD": _db_pass or None,
+            "HOST": _host or None,
+            "PORT": _port or None,
+            "OPTIONS": _merge_pg_options({}, host=_host),
         },
     }
 
@@ -235,75 +251,28 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = '/static/' if not DEBUG else 'static/'
 STATIC_ROOT = BASE_DIR / 'static'
-MEDIA_ROOT = BASE_DIR / 'media'
+
+# Media (user uploads)
+# Defaults to <repo>/media, but allow overriding via .env for local/dev/prod-disk setups.
+_media_root_env = (os.getenv("MEDIA_ROOT") or "").strip()
+if _media_root_env:
+    _media_root_path = Path(_media_root_env)
+    MEDIA_ROOT = _media_root_path if _media_root_path.is_absolute() else (BASE_DIR / _media_root_path)
+else:
+    MEDIA_ROOT = BASE_DIR / "media"
+
 # Leading slash so FileField/admin links resolve from site root (not under /admin/...).
-MEDIA_URL = '/media/'
+_media_url_env = (os.getenv("MEDIA_URL") or "").strip()
+MEDIA_URL = _media_url_env if _media_url_env else "/media/"
+if not MEDIA_URL.endswith("/"):
+    MEDIA_URL = f"{MEDIA_URL}/"
 
-# User uploads (e.g. ResumeReviewDay resumes). Vercel serverless has a read-only app dir
-# (/var/task); use S3-compatible storage when AWS_STORAGE_BUCKET_NAME is set.
-# See https://vercel.com/docs/functions/runtimes/python (bundle is read-only at runtime).
-_AWS_BUCKET = (os.getenv("AWS_STORAGE_BUCKET_NAME") or "").strip()
-USE_S3_MEDIA = bool(_AWS_BUCKET)
-
-if USE_S3_MEDIA:
-    AWS_STORAGE_BUCKET_NAME = _AWS_BUCKET
-    _endpoint = (os.getenv("AWS_S3_ENDPOINT_URL") or "").strip()
-    if _endpoint:
-        AWS_S3_ENDPOINT_URL = _endpoint
-    _region_env = (os.getenv("AWS_S3_REGION_NAME") or "").strip()
-    if _region_env:
-        AWS_S3_REGION_NAME = _region_env
-    elif _endpoint and "r2.cloudflarestorage.com" in _endpoint.lower():
-        # Cloudflare R2: boto3 expects region "auto" (not an AWS region). See R2 S3 API docs.
-        AWS_S3_REGION_NAME = "auto"
-    else:
-        AWS_S3_REGION_NAME = "us-east-1"
-    # R2 rejects SigV2 query URLs; django-storages/botocore must use SigV4 for presigned links.
-    # https://django-storages.readthedocs.io/en/latest/backends/amazon-S3.html#settings
-    _sig = (os.getenv("AWS_S3_SIGNATURE_VERSION") or "s3v4").strip() or "s3v4"
-    AWS_S3_SIGNATURE_VERSION = _sig
-    _custom_domain = (os.getenv("AWS_S3_CUSTOM_DOMAIN") or "").strip()
-    if _custom_domain:
-        AWS_S3_CUSTOM_DOMAIN = _custom_domain
-    # Credentials: set on Vercel/Render; omit only if your runtime provides IAM (e.g. AWS Lambda).
-    _ak = (os.getenv("AWS_ACCESS_KEY_ID") or "").strip()
-    _sk = (os.getenv("AWS_SECRET_ACCESS_KEY") or "").strip()
-    if _ak:
-        AWS_ACCESS_KEY_ID = _ak
-    if _sk:
-        AWS_SECRET_ACCESS_KEY = _sk
-    AWS_DEFAULT_ACL = None
-    AWS_QUERYSTRING_AUTH = True
-    AWS_S3_FILE_OVERWRITE = False
-    AWS_S3_OBJECT_PARAMETERS = {"CacheControl": "max-age=86400"}
-    _media_url_override = (os.getenv("MEDIA_URL") or "").strip()
-    if _media_url_override:
-        MEDIA_URL = _media_url_override if _media_url_override.endswith("/") else f"{_media_url_override}/"
-    elif _custom_domain:
-        MEDIA_URL = f"https://{_custom_domain}/"
-    elif _endpoint:
-        # S3-compatible endpoint (R2, MinIO, etc.): avoid bogus *.amazonaws.com when region is "auto".
-        MEDIA_URL = f"{_endpoint.rstrip('/')}/{_AWS_BUCKET}/"
-    else:
-        MEDIA_URL = f"https://{_AWS_BUCKET}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/"
-
-_default_file_backend = (
-    "storages.backends.s3boto3.S3Boto3Storage" if USE_S3_MEDIA else "django.core.files.storage.FileSystemStorage"
-)
-
+# Storage backends (disk only).
+# In production, WhiteNoise serves versioned static assets from STATIC_ROOT.
 if not DEBUG:
     STORAGES = {
-        "default": {"BACKEND": _default_file_backend},
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
-    }
-elif USE_S3_MEDIA:
-    STORAGES = {
-        "default": {"BACKEND": _default_file_backend},
-        "staticfiles": {
-            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
-        },
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 
 # Trusted origins for CSRF (admin POST, etc.) — include https://<your-service>.onrender.com on Render.
