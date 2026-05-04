@@ -1,40 +1,27 @@
-# Use Python 3.11 slim image
-FROM python:3.11-slim
+FROM python:3.13-slim
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV UV_LINK_MODE=copy
+ENV UV_PYTHON_DOWNLOADS=never
+ENV UV_PROJECT_ENVIORNMENT=/opt/venv
 
-# Create and set working directory
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
+    ca-certificates \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Create a non-root user
-RUN adduser --disabled-password --no-create-home django
+WORKDIR /app
 
-# Copy the entrypoint script and make it executable
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh && \
-    chown django:django /entrypoint.sh
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen
 
-# Change ownership of the app directory to django user
-RUN chown -R django:django /app
+COPY . .
 
-# Switch to non-root user
-USER django
-
-# Expose port 8000
 EXPOSE 8000
 
-# Set the entrypoint
-ENTRYPOINT ["/entrypoint.sh"]
+CMD ["uv", "run", "gunicorn", "backendapi.wsgi:application", "--bind", "0.0.0.0:8000"]
