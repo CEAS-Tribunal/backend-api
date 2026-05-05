@@ -267,6 +267,20 @@ MEDIA_URL = _media_url_env if _media_url_env else "/media/"
 if not MEDIA_URL.endswith("/"):
     MEDIA_URL = f"{MEDIA_URL}/"
 
+_static_root_env = (os.getenv("STATIC_ROOT") or "").strip()
+if _static_root_env:
+    _static_root_path = Path(_static_root_env)
+    STATIC_ROOT = _static_root_path if _static_root_path.is_absolute() else (BASE_DIR / _static_root_path)
+else:
+    STATIC_ROOT = BASE_DIR / "static"
+
+# Leading slash so FileField/admin links resolve from site root (not under /admin/...).
+_static_url_env = (os.getenv("STATIC_URL") or "").strip()
+STATIC_URL = _static_url_env if _static_url_env else "/static/"
+if not STATIC_URL.endswith("/"):
+    STATIC_URL = f"{STATIC_URL}/"
+
+
 # Storage backends (disk only).
 # In production, WhiteNoise serves versioned static assets from STATIC_ROOT.
 if not DEBUG:
