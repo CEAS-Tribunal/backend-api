@@ -280,8 +280,10 @@ STATIC_URL = _static_url_env if _static_url_env else "/static/"
 if not STATIC_URL.endswith("/"):
     STATIC_URL = f"{STATIC_URL}/"
     
-FORCE_SCRIPT_NAME = '/django-admin'
-
+# settings.py
+FORCE_SCRIPT_NAME = ''  # prevents Django from doubling the prefix
+LOGIN_URL = '/django-admin/login/'
+LOGIN_REDIRECT_URL = '/django-admin/'
 # Storage backends (disk only).
 # In production, WhiteNoise serves versioned static assets from STATIC_ROOT.
 if not DEBUG:
