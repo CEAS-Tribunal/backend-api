@@ -279,7 +279,8 @@ _static_url_env = (os.getenv("STATIC_URL") or "").strip()
 STATIC_URL = _static_url_env if _static_url_env else "/static/"
 if not STATIC_URL.endswith("/"):
     STATIC_URL = f"{STATIC_URL}/"
-
+    
+FORCE_SCRIPT_NAME = '/django-admin'
 
 # Storage backends (disk only).
 # In production, WhiteNoise serves versioned static assets from STATIC_ROOT.
