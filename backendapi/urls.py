@@ -24,7 +24,7 @@ urlpatterns = [
     path('', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
     
-    path('admin/', admin.site.urls),
+    path('django-admin/', admin.site.urls),
     path('dashboard/', include('dashboard.urls'), name='dashboard'),
     path('api/resume-review-day/', include('ResumeReviewDay.urls'), name='resume-review-day'),
     path('api/career-fair/', include('career_fair.urls'), name='career-fair'),
