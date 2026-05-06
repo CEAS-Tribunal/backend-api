@@ -252,6 +252,22 @@ USE_TZ = True
 STATIC_URL = '/static/' if not DEBUG else 'static/'
 STATIC_ROOT = BASE_DIR / 'static'
 
+# Email (SMTP)
+# Configure in environment for prod; local/dev may use console backend via EMAIL_BACKEND.
+EMAIL_BACKEND = (os.getenv("EMAIL_BACKEND") or "django.core.mail.backends.smtp.EmailBackend").strip()
+EMAIL_HOST = (os.getenv("EMAIL_HOST") or "").strip()
+EMAIL_PORT = int(os.getenv("EMAIL_PORT") or 587)
+EMAIL_HOST_USER = (os.getenv("EMAIL_HOST_USER") or "").strip()
+EMAIL_HOST_PASSWORD = (os.getenv("EMAIL_HOST_PASSWORD") or "").strip()
+EMAIL_USE_TLS = bool(int(os.getenv("EMAIL_USE_TLS") or 1))
+EMAIL_USE_SSL = bool(int(os.getenv("EMAIL_USE_SSL") or 0))
+
+# From address for outbound system mail.
+DEFAULT_FROM_EMAIL = (os.getenv("DEFAULT_FROM_EMAIL") or "noreply@tribunal.uc.edu").strip()
+
+# Optional fallback if ExecRole "Treasurer" isn't set up yet.
+TREASURER_NOTIFICATION_EMAILS = _csv_env("TREASURER_NOTIFICATION_EMAILS")
+
 # Media (user uploads)
 # Defaults to <repo>/media, but allow overriding via .env for local/dev/prod-disk setups.
 _media_root_env = (os.getenv("MEDIA_ROOT") or "").strip()

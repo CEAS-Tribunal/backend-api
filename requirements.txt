@@ -92,6 +92,8 @@ pyjwt==2.9.0
     # via
     #   backend-api
     #   djangorestframework-simplejwt
+pypdf==6.10.2
+    # via backend-api
 python-dateutil==2.9.0.post0
     # via
     #   backend-api

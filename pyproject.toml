@@ -30,6 +30,7 @@ dependencies = [
     "psycopg-binary==3.2.12",
     "psycopg2-binary==2.9.11",
     "pyjwt==2.9.0",
+    "pypdf>=6.10.2",
     "python-dateutil==2.9.0.post0",
     "python-dotenv==1.1.0",
     "pytz==2025.2",
