@@ -3,6 +3,7 @@ from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core import mail
 from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -15,7 +16,10 @@ from reimbursement.models import ReimbursementRequest, UserProfile
 User = get_user_model()
 
 
-@override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"])
+@override_settings(
+    ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"],
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+)
 class ReimbursementRequestCreateAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -27,6 +31,24 @@ class ReimbursementRequestCreateAPITests(TestCase):
         self.user.is_staff = True
         self.user.save(update_fields=["is_staff"])
         UserProfile.objects.create(user=self.user, vendor_id="VENDOR-TEST-001")
+
+        # Treasurer recipient (via ExecRole) for notification testing.
+        self.treasurer_user = User.objects.create_user(
+            username="treasurer1",
+            email="treasurer@test.edu",
+            password="pass12345",
+            first_name="Terry",
+            last_name="Treasurer",
+        )
+        self.treasurer_user.is_staff = True
+        self.treasurer_user.save(update_fields=["is_staff"])
+        em = ExecMember.objects.create(user=self.treasurer_user, must_change_password=False)
+        role = ExecRole.objects.create(
+            role="Treasurer",
+            description="Finance",
+            committee="pres",
+        )
+        role.ExecMember.add(em)
 
         refresh = RefreshToken.for_user(self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
@@ -58,6 +80,19 @@ class ReimbursementRequestCreateAPITests(TestCase):
         self.assertEqual(req.amount, Decimal("12.34"))
         self.assertTrue(req.itemized_receipt.name)
 
+        # Treasurer notification sent and does not include empty optional fields.
+        self.assertEqual(len(mail.outbox), 1)
+        msg = mail.outbox[0]
+        self.assertIn("treasurer@test.edu", msg.to)
+        html = msg.alternatives[0][0] if msg.alternatives else msg.body
+        self.assertIn("Hello", html)
+        self.assertIn("Terry Treasurer", html)
+        self.assertIn("M12345678", html)
+        self.assertIn("Test Vendor", html)
+        self.assertIn("Team supplies", html)
+        self.assertNotIn("Mailing address line 2", html)
+        self.assertNotIn("IC participant", html)
+
     def test_create_with_supporting_document_optional(self):
         support = SimpleUploadedFile("extra.png", b"\x89PNG\r\n", content_type="image/png")
         payload = {
@@ -67,6 +102,8 @@ class ReimbursementRequestCreateAPITests(TestCase):
             "amount": "5.00",
             "description": "Misc",
             "budgeted": "false",
+            "non_budgeted_officer_name": "Officer Name",
+            "non_budgeted_officer_position": "Officer Position",
             "reimbursement_type": "Travel",
             "itemized_receipt": self._receipt_file(),
             "supporting_document": support,

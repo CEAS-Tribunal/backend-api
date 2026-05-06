@@ -1,13 +1,16 @@
 from django.db.models import Q
+import logging
 from rest_framework import status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.conf import settings
 
 from dashboard.models import ExecMember
 from dashboard.permissions import IsStaffUser, IsTreasurerOrSuperuserStaff
 
 from .models import ReimbursementRequest, UserProfile
+from .emailing import send_treasurer_reimbursement_request_created
 from .serializers import (
     ReimbursementRequestCreateSerializer,
     ReimbursementRequestFiledPatchSerializer,
@@ -32,6 +35,9 @@ def _exec_position(user) -> str:
     return joined[:255]
 
 
+logger = logging.getLogger(__name__)
+
+
 class ReimbursementRequestCreateView(APIView):
     """
     Staff-only: create a reimbursement row from multipart form data.
@@ -45,17 +51,29 @@ class ReimbursementRequestCreateView(APIView):
     def post(self, request):
         serializer = ReimbursementRequestCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        reimbursement_type = (data.get("reimbursement_type") or "").strip().lower()
+        is_check = reimbursement_type == "check"
 
-        try:
-            profile = request.user.reimbursement_profile
-        except UserProfile.DoesNotExist:
-            return Response(
-                {
-                    "detail": "No reimbursement profile for this account. "
-                    "Ask the treasurer to add your vendor ID."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        profile = None
+        if reimbursement_type != "check":
+            # For direct deposit (and all non-check methods), vendor ID is required.
+            try:
+                profile = request.user.reimbursement_profile
+            except UserProfile.DoesNotExist:
+                return Response(
+                    {
+                        "detail": "No reimbursement profile for this account. "
+                        "Ask the treasurer to add your vendor ID."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            # For check reimbursements, vendor ID is not required.
+            try:
+                profile = request.user.reimbursement_profile
+            except UserProfile.DoesNotExist:
+                profile = None
 
         user = request.user
         if not (user.email or "").strip():
@@ -64,22 +82,50 @@ class ReimbursementRequestCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        data = serializer.validated_data
         req = ReimbursementRequest.objects.create(
             name=_display_name(user),
             position=_exec_position(user),
             email=user.email.strip(),
             m_number=data["m_number"].strip(),
-            vendor_id=profile.vendor_id,
+            vendor_id=(profile.vendor_id if profile else ""),
             date=data["date"],
             vendor_name=data["vendor_name"].strip(),
             amount=data["amount"],
             description=data["description"].strip(),
             budgeted=data["budgeted"],
             reimbursement_type=data["reimbursement_type"],
+            reimbursement_address_line1=(
+                (data.get("reimbursement_address_line1") or "").strip() if is_check else ""
+            ),
+            reimbursement_address_line2=(
+                (data.get("reimbursement_address_line2") or "").strip() if is_check else ""
+            ),
+            reimbursement_address_city=(
+                (data.get("reimbursement_address_city") or "").strip() if is_check else ""
+            ),
+            reimbursement_address_state=(
+                (data.get("reimbursement_address_state") or "").strip() if is_check else ""
+            ),
+            reimbursement_address_zip=(
+                (data.get("reimbursement_address_zip") or "").strip() if is_check else ""
+            ),
+            non_budgeted_officer_name=(data.get("non_budgeted_officer_name") or "").strip(),
+            non_budgeted_officer_position=(data.get("non_budgeted_officer_position") or "").strip(),
+            ic_competition=data.get("ic_competition") is True,
+            ic_participant_name=(data.get("ic_participant_name") or "").strip(),
+            ic_participant_role=(data.get("ic_participant_role") or "").strip(),
+            ic_participant_email=(data.get("ic_participant_email") or "").strip(),
             itemized_receipt=data["itemized_receipt"],
             supporting_document=data.get("supporting_document"),
         )
+
+        # Notify Treasurer(s). Never block request creation on email delivery.
+        try:
+            send_treasurer_reimbursement_request_created(req, request=request)
+        except Exception:
+            logger.exception("Treasurer notification email failed", extra={"reimbursement_request_id": req.id})
+            if settings.DEBUG:
+                raise
 
         return Response(
             {

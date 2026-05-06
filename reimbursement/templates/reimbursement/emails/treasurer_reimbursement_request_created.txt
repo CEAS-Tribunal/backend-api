@@ -1,0 +1,19 @@
+Hello {{ treasurer_name }},
+
+A new reimbursement request has been submitted.
+Only the fields that were filled out are shown below.
+
+Request ID: #{{ request_id }}
+
+{% for label, value in details %}
+{{ label }}: {{ value }}
+{% endfor %}
+
+{% if attachments %}
+
+Documents:
+{% for a in attachments %}
+- {{ a.label }} ({{ a.filename }}): {{ a.url }}
+{% endfor %}
+{% endif %}
+
