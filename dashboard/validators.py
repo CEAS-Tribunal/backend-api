@@ -10,24 +10,31 @@ class TribunalPasswordValidator:
     """
 
     def validate(self, password, user=None):
-        if user and password == user.username:
-            raise ValidationError(
-                "Password cannot be the same as your username.",
-                code="password_same_as_username",
-            )
-        if len(password) <= 5:
-            raise ValidationError(
-                "Password must be more than 5 characters.",
-                code="password_too_short",
-            )
-        if not re.fullmatch(r"[a-zA-Z0-9]+", password):
-            raise ValidationError(
-                "Password must contain only letters and numbers.",
-                code="password_not_alphanumeric",
-            )
+        errors = []
+
+        if len(password) < 8:
+            errors.append("Password must be at least 8 characters.")
+        
+        if len(password) > 128:
+            errors.append("Password must be no more than 128 characters.")
+
+        if not re.search(r'[A-Z]', password):
+            errors.append("Password must contain at least one uppercase letter.")
+        
+        if not re.search(r'[a-z]', password):
+            errors.append("Password must contain at least one lowercase letter.")
+        
+        if not re.search(r'\d', password):
+            errors.append("Password must contain at least one number.")
+        
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+            errors.append("Password must contain at least one special character.")
+        
+        if re.search(r'(.)\1{2,}', password):  # e.g. "aaa"
+            errors.append("Password must not contain repeated characters.")
+
+        if errors:
+            raise ValidationError(errors)
 
     def get_help_text(self):
-        return (
-            "Your password must be more than 5 characters, use only letters and numbers, "
-            "and cannot match your username."
-        )
+        return "Password must be 12–128 chars with upper, lower, number, and symbol."
