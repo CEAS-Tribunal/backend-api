@@ -92,6 +92,10 @@ class ReimbursementRequestCreateAPITests(TestCase):
         self.assertIn("Team supplies", html)
         self.assertNotIn("Mailing address line 2", html)
         self.assertNotIn("IC participant", html)
+        self.assertEqual(len(msg.attachments), 2)
+        attachment_names = {a[0] for a in msg.attachments}
+        self.assertTrue(any(name.startswith("receipt") and name.endswith(".pdf") for name in attachment_names))
+        self.assertIn(f"reimbursement_request_{req.id}.pdf", attachment_names)
 
     def test_create_with_supporting_document_optional(self):
         support = SimpleUploadedFile("extra.png", b"\x89PNG\r\n", content_type="image/png")
@@ -112,6 +116,13 @@ class ReimbursementRequestCreateAPITests(TestCase):
         self.assertEqual(r.status_code, status.HTTP_201_CREATED, r.data)
         req = ReimbursementRequest.objects.get(pk=r.data["id"])
         self.assertTrue(req.supporting_document.name)
+
+        self.assertEqual(len(mail.outbox), 1)
+        msg = mail.outbox[0]
+        attachment_names = {a[0] for a in msg.attachments}
+        self.assertTrue(any(name.startswith("receipt") and name.endswith(".pdf") for name in attachment_names))
+        self.assertTrue(any(name.startswith("extra") and name.endswith(".png") for name in attachment_names))
+        self.assertIn(f"reimbursement_request_{req.id}.pdf", attachment_names)
 
     def test_no_profile_returns_400(self):
         lone = User.objects.create_user(
@@ -257,3 +268,54 @@ class ReimbursementRequestListAndFiledAPITests(TestCase):
             format="json",
         )
         self.assertEqual(r.status_code, status.HTTP_200_OK, r.data)
+
+
+class ReimbursementPdfTests(TestCase):
+    def test_filled_pdf_flattens_field_values_for_viewers(self):
+        from pypdf import PdfReader
+
+        from reimbursement.pdf import build_filled_reimbursement_pdf
+
+        req = ReimbursementRequest.objects.create(
+            name="Jane Doe",
+            position="President",
+            email="jane@test.edu",
+            m_number="M87654321",
+            vendor_id="VENDOR-TEST-001",
+            date="2026-04-06",
+            vendor_name="Staples",
+            amount=Decimal("99.99"),
+            description="Office paper",
+            budgeted=False,
+            reimbursement_type="check",
+            reimbursement_address_line1="123 Main St",
+            reimbursement_address_city="Cincinnati",
+            reimbursement_address_state="OH",
+            reimbursement_address_zip="45221",
+            non_budgeted_officer_name="Officer Bob",
+            non_budgeted_officer_position="VP Finance",
+        )
+
+        filled = build_filled_reimbursement_pdf(req)
+        self.assertIsNotNone(filled)
+        assert filled is not None
+
+        reader = PdfReader(BytesIO(filled.content))
+        page = reader.pages[0]
+        self.assertFalse(page.get("/Annots"))
+
+        resources = page["/Resources"].get_object()
+        xobjects = resources.get("/XObject")
+        self.assertIsNotNone(xobjects)
+        xobjects = xobjects.get_object()
+
+        flattened_streams = [
+            obj.get_data()
+            for key, ref in xobjects.items()
+            if str(key).startswith("/Fm_")
+            for obj in [ref.get_object()]
+        ]
+        combined = b"".join(flattened_streams)
+        self.assertIn(b"Jane Doe", combined)
+        self.assertIn(b"Staples", combined)
+        self.assertIn(b"Officer Bob", combined)

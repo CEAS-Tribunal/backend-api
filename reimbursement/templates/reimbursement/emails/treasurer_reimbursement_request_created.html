@@ -89,6 +89,7 @@
                                 <div style="font-size:13px;color:#111827;line-height:1.5;word-break:break-word;font-weight:600;margin:0 0 10px 0;">
                                   {{ a.filename }}
                                 </div>
+                                {% if a.url %}
                                 <a href="{{ a.url }}"
                                    style="display:inline-block;background:#c8102e;color:#ffffff;text-decoration:none;font-size:12px;font-weight:700;padding:10px 12px;border-radius:10px;">
                                   Download
@@ -96,6 +97,11 @@
                                 <div style="font-size:11px;color:#6b7280;margin-top:10px;word-break:break-all;">
                                   {{ a.url }}
                                 </div>
+                                {% else %}
+                                <div style="font-size:12px;color:#374151;line-height:1.5;">
+                                  Attached to this email.
+                                </div>
+                                {% endif %}
                               </td>
                             </tr>
                           </table>
