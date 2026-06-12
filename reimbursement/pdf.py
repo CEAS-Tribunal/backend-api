@@ -6,7 +6,6 @@ from io import BytesIO
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import NameObject
 
 from .models import ReimbursementRequest
 
@@ -48,13 +47,7 @@ def build_filled_reimbursement_pdf(req: ReimbursementRequest) -> FilledPdf | Non
 
     reader = PdfReader(str(template_path))
     writer = PdfWriter()
-    writer.append_pages_from_reader(reader)
-
-    # Preserve the AcroForm dictionary so pypdf can update fields on the writer.
-    root = reader.trailer.get("/Root", {})
-    acroform = root.get("/AcroForm")
-    if acroform is not None:
-        writer._root_object.update({NameObject("/AcroForm"): acroform})  # type: ignore[attr-defined]
+    writer.append(reader)
 
     reimbursement_type = (req.reimbursement_type or "").strip().lower()
     is_check = reimbursement_type == "check"
@@ -96,19 +89,17 @@ def build_filled_reimbursement_pdf(req: ReimbursementRequest) -> FilledPdf | Non
         if (req.non_budgeted_officer_position or "").strip():
             fields["approver_position"] = (req.non_budgeted_officer_position or "").strip()
 
-    # Populate form fields on the first page.
+    # Flatten filled values into page content so PDF viewers (email clients,
+    # browser preview, etc.) show text without requiring interactive form focus.
     if writer.pages:
         page0 = writer.pages[0]
-        writer.update_page_form_field_values(page0, fields)
-        writer.update_page_form_field_values(page0, checkbox_values)
-
-    # Help PDF viewers render filled fields consistently.
-    try:
-        af = writer._root_object.get("/AcroForm")  # type: ignore[attr-defined]
-        if af is not None:
-            af.update({NameObject("/NeedAppearances"): True})
-    except Exception:
-        pass
+        writer.update_page_form_field_values(
+            page0,
+            {**fields, **checkbox_values},
+            auto_regenerate=False,
+            flatten=True,
+        )
+        writer.remove_annotations(subtypes="/Widget")
 
     buf = BytesIO()
     writer.write(buf)

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 import logging
-from pathlib import Path
+import mimetypes
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
@@ -143,31 +143,59 @@ def _request_details(req: ReimbursementRequest, request=None) -> list[tuple[str,
     return [(k, v) for (k, v) in details if _truthy(v)]
 
 
+def _upload_leaf_name(filefield, fallback_filename: str) -> str:
+    filename = _clean(getattr(filefield, "name", "")) or fallback_filename
+    return filename.replace("\\", "/").split("/")[-1] or fallback_filename
+
+
 def _attachments(req: ReimbursementRequest, request=None) -> list[dict[str, str]]:
     """
-    Return attachment links for email rendering (downloadable).
-    Each entry is {label, url, filename}.
+    Return uploaded document metadata for email rendering.
+    Each entry is {label, url, filename}; url may be empty when only attached inline.
     """
     out: list[dict[str, str]] = []
 
     def add(label: str, filefield, fallback_filename: str):
         if not filefield:
             return
+        url = ""
         try:
             url = filefield.url
             if request is not None:
                 url = request.build_absolute_uri(url)
         except Exception:
             url = ""
-        if not url:
-            return
-        filename = _clean(getattr(filefield, "name", "")) or fallback_filename
-        filename = filename.replace("\\", "/").split("/")[-1] or fallback_filename
-        out.append({"label": label, "url": url, "filename": filename})
+        out.append(
+            {
+                "label": label,
+                "url": url,
+                "filename": _upload_leaf_name(filefield, fallback_filename),
+            }
+        )
 
     add("Itemized receipt", req.itemized_receipt, "receipt")
     add("Supporting document", req.supporting_document, "supporting-document")
     return out
+
+
+def _attach_uploaded_file(msg: EmailMultiAlternatives, filefield, fallback_filename: str) -> bool:
+    if not filefield:
+        return False
+    try:
+        with filefield.open("rb") as fh:
+            content = fh.read()
+        if not content:
+            return False
+        filename = _upload_leaf_name(filefield, fallback_filename)
+        content_type, _ = mimetypes.guess_type(filename)
+        msg.attach(filename, content, content_type or "application/octet-stream")
+        return True
+    except Exception:
+        logger.exception(
+            "Failed to attach uploaded reimbursement file",
+            extra={"filename": getattr(filefield, "name", "")},
+        )
+        return False
 
 
 def send_treasurer_reimbursement_request_created(
@@ -183,7 +211,7 @@ def send_treasurer_reimbursement_request_created(
 
     details = _request_details(req, request=request)
     attachments = _attachments(req, request=request)
-    subject = f"New reimbursement request: {req.name} (${req.amount:.2f})" if req.amount else f"New reimbursement request: {req.name}"
+    subject = f"DEV - New reimbursement request: {req.name} (${req.amount:.2f})" if req.amount else f"New reimbursement request: {req.name}"
 
     sent = 0
     for treasurer in recips:
@@ -211,7 +239,9 @@ def send_treasurer_reimbursement_request_created(
             )
             msg.attach_alternative(html_body, "text/html")
 
-            # Attach a filled-out PDF version of the template.
+            # Attach uploaded receipt/supporting docs and a filled-out PDF template.
+            _attach_uploaded_file(msg, req.itemized_receipt, "receipt")
+            _attach_uploaded_file(msg, req.supporting_document, "supporting-document")
             try:
                 filled = build_filled_reimbursement_pdf(req)
                 if filled is not None and filled.content:

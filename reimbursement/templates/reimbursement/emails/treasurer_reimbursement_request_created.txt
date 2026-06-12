@@ -13,7 +13,7 @@ Request ID: #{{ request_id }}
 
 Documents:
 {% for a in attachments %}
-- {{ a.label }} ({{ a.filename }}): {{ a.url }}
+- {{ a.label }} ({{ a.filename }}){% if a.url %}: {{ a.url }}{% else %} — attached to this email{% endif %}
 {% endfor %}
 {% endif %}
 
