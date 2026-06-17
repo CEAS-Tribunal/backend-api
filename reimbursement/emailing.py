@@ -15,6 +15,10 @@ from dashboard.models import ExecRole
 from .models import ReimbursementRequest
 from .pdf import build_filled_reimbursement_pdf
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 @dataclass(frozen=True)
 class TreasurerRecipient:
@@ -211,7 +215,8 @@ def send_treasurer_reimbursement_request_created(
 
     details = _request_details(req, request=request)
     attachments = _attachments(req, request=request)
-    subject = f"DEV - New reimbursement request: {req.name} (${req.amount:.2f})" if req.amount else f"New reimbursement request: {req.name}"
+    environ_condition = f"DEV - " if os.getenv('DEBUG', 0) else ""
+    subject  = environ_condition + f"New reimbursement request: {req.name} (${req.amount:.2f})" if req.amount else f"New reimbursement request: {req.name}"
 
     sent = 0
     for treasurer in recips:
