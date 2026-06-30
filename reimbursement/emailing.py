@@ -16,6 +16,7 @@ from .models import ReimbursementRequest
 from .pdf import build_filled_reimbursement_pdf
 
 from dotenv import load_dotenv
+import os
 
 # Load environment variables from .env file
 load_dotenv()
