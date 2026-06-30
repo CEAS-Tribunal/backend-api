@@ -16,7 +16,6 @@ from .models import ReimbursementRequest
 from .pdf import build_filled_reimbursement_pdf
 
 from dotenv import load_dotenv
-import os
 
 # Load environment variables from .env file
 load_dotenv()
@@ -216,7 +215,7 @@ def send_treasurer_reimbursement_request_created(
 
     details = _request_details(req, request=request)
     attachments = _attachments(req, request=request)
-    environ_condition = f"DEV - " if os.getenv('DEBUG', 0) else ""
+    environ_condition = "DEV - " if settings.DEBUG else ""
     subject  = environ_condition + f"New reimbursement request: {req.name} (${req.amount:.2f})" if req.amount else f"New reimbursement request: {req.name}"
 
     sent = 0
