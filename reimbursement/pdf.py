@@ -49,6 +49,13 @@ def build_filled_reimbursement_pdf(req: ReimbursementRequest) -> FilledPdf | Non
     writer = PdfWriter()
     writer.append(reader)
 
+    if req.ic_competition:
+        name = req.ic_participant_name
+        title = req.ic_participant_role
+    else:
+        name = req.name
+        title = req.position
+
     reimbursement_type = (req.reimbursement_type or "").strip().lower()
     is_check = reimbursement_type == "check"
 
@@ -62,8 +69,8 @@ def build_filled_reimbursement_pdf(req: ReimbursementRequest) -> FilledPdf | Non
     address = ", ".join([p for p in address_parts if p]) if is_check else ""
 
     fields: dict[str, str] = {
-        "name": (req.name or "").strip(),
-        "title": (req.position or "").strip(),
+        "name": name,
+        "title": title,
         "date_submitted": _fmt_date(getattr(req, "created_at", None) or datetime.now()),
         "m_number": (req.m_number or "").strip(),
         "expenditure_date": _fmt_date(req.date),
