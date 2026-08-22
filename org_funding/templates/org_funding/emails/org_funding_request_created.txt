@@ -1,0 +1,19 @@
+Hello {{ recipient_name }},
+
+A new organization funding request has been submitted by {{ organization_name }}.
+
+Request ID: #{{ request_id }}
+
+{% for label, value in details %}
+{{ label }}: {{ value }}
+{% endfor %}
+
+{% if attachments %}
+
+Documents:
+{% for a in attachments %}
+- {{ a.label }} ({{ a.filename }}){% if a.url %}: {{ a.url }}{% else %} — attached to this email{% endif %}
+{% endfor %}
+{% endif %}
+
+Review this request in the admin dashboard under Org funding.
