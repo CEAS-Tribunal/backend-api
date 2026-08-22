@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     'ResumeReviewDay',
     'reimbursement',
     'career_fair',
+    'org_funding',
 ]
 
 # drf-spectacular settings
@@ -263,6 +264,10 @@ DEFAULT_FROM_EMAIL = (os.getenv("DEFAULT_FROM_EMAIL") or "noreply@tribunal.uc.ed
 
 # Optional fallback if ExecRole "Treasurer" isn't set up yet.
 TREASURER_NOTIFICATION_EMAILS = _csv_env("TREASURER_NOTIFICATION_EMAILS")
+
+# Extra recipients (beyond the Org Funding chair ExecRole) notified on new funding requests,
+# e.g. the overseeing officer. Comma-separated emails.
+ORG_FUNDING_NOTIFICATION_EMAILS = _csv_env("ORG_FUNDING_NOTIFICATION_EMAILS")
 
 # Media (user uploads)
 # Defaults to <repo>/media, but allow overriding via .env for local/dev/prod-disk setups.
