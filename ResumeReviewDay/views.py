@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from dashboard.permissions import IsStaffUser
 
-from .models import Employer, Student, Timeslot, MAJOR_CHOICES
+from .models import Employer, ResumeReviewSettings, Student, Timeslot, MAJOR_CHOICES
 
 from datetime import datetime, timedelta
 import pandas as pd
@@ -31,6 +31,8 @@ class EmployerViewSet(APIView):
 
     def get(self, request):
         """Public list of registered employers with available slot counts."""
+        if not ResumeReviewSettings.current().employer_page_open:
+            return Response({"detail": "Employer registration is closed."}, status=status.HTTP_404_NOT_FOUND)
         employers = Employer.objects.all().order_by("company_name")
         results = []
         for emp in employers:
@@ -48,6 +50,8 @@ class EmployerViewSet(APIView):
         return Response(results, status=status.HTTP_200_OK)
 
     def post(self, request):
+        if not ResumeReviewSettings.current().employer_page_open:
+            return Response({"detail": "Employer registration is closed."}, status=status.HTTP_404_NOT_FOUND)
         try:
             full_name = request.data.get("full_name")
             company_name = request.data.get("company_name")
@@ -152,10 +156,55 @@ class AdminResumeRosterView(APIView):
         return Response(results, status=status.HTTP_200_OK)
 
 
+class ResumeReviewSettingsView(APIView):
+    """Staff-only read/update endpoint for public registration page availability."""
+
+    permission_classes = [AllowAny]
+
+    def get_permissions(self):
+        if self.request.method == "PATCH":
+            return [IsAuthenticated(), IsStaffUser()]
+        return [AllowAny()]
+
+    def get(self, request):
+        settings = ResumeReviewSettings.current()
+        return Response(
+            {
+                "employer_page_open": settings.employer_page_open,
+                "student_page_open": settings.student_page_open,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def patch(self, request):
+        settings = ResumeReviewSettings.current()
+        update_fields = []
+        for field in ("employer_page_open", "student_page_open"):
+            if field in request.data:
+                value = request.data[field]
+                if not isinstance(value, bool):
+                    return Response(
+                        {field: "This field must be a boolean."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                setattr(settings, field, value)
+                update_fields.append(field)
+
+        if not update_fields:
+            return Response(
+                {"detail": "At least one page availability field is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        settings.save(update_fields=update_fields)
+        return self.get(request)
+
+
 class StudentViewSet(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        if not ResumeReviewSettings.current().student_page_open:
+            return Response({"detail": "Student registration is closed."}, status=status.HTTP_404_NOT_FOUND)
         try:
             full_name = request.data.get("full_name")
             email = request.data.get("email")
@@ -244,6 +293,8 @@ class TimeslotViewSet(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
+        if not ResumeReviewSettings.current().student_page_open:
+            return Response({"detail": "Student registration is closed."}, status=status.HTTP_404_NOT_FOUND)
         major = request.query_params.get("major")
         time_params = request.query_params.getlist("time")
         times_filter = _parse_time_params(time_params)
