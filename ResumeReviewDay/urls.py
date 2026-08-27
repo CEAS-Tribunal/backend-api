@@ -6,5 +6,6 @@ urlpatterns = [
     path('student/', views.StudentViewSet.as_view(), name='students'),
     path('timeslots/', views.TimeslotViewSet.as_view(), name='timeslots'),
     path('roster/', views.AdminResumeRosterView.as_view(), name='admin-resume-roster'),
+    path('settings/', views.ResumeReviewSettingsView.as_view(), name='resume-review-settings'),
 ]
 

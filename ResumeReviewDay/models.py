@@ -22,6 +22,23 @@ MAJOR_CHOICES = (
     ('mecht', 'Mechanical Engineering Technology')
 )
 
+
+class ResumeReviewSettings(models.Model):
+    """Singleton containing the public availability of each registration page."""
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    employer_page_open = models.BooleanField(default=True)
+    student_page_open = models.BooleanField(default=True)
+
+    def save(self, *args, **kwargs):
+        self.id = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def current(cls):
+        settings, _ = cls.objects.get_or_create(pk=1)
+        return settings
+
 class Employer(models.Model):
     id = models.CharField(primary_key=True, default=cuid.cuid, max_length=25)
     full_name = models.CharField(max_length=30, null=False)

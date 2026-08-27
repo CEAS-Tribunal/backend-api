@@ -7,7 +7,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Employer, Student, Timeslot
+from .models import Employer, ResumeReviewSettings, Student, Timeslot
 
 
 def _make_employer(**overrides):
@@ -403,3 +403,59 @@ class AdminResumeRosterViewTests(TestCase):
         majors = r.data[0]["selected_majors"]
         self.assertIn("Computer Science", majors)
         self.assertNotIn("cs", majors)
+
+
+@override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"])
+class ResumeReviewSettingsViewTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(username="settings-admin", password="pass12345")
+        self.user.is_staff = True
+        self.user.save(update_fields=["is_staff"])
+
+    def _auth(self):
+        token = RefreshToken.for_user(self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
+
+    def test_settings_get_is_public(self):
+        response = self.client.get("/api/resume-review-day/settings/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_settings_patch_requires_staff_authentication(self):
+        response = self.client.patch(
+            "/api/resume-review-day/settings/",
+            {"student_page_open": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_staff_can_read_and_update_settings(self):
+        self._auth()
+        response = self.client.get("/api/resume-review-day/settings/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["employer_page_open"], True)
+        self.assertEqual(response.data["student_page_open"], True)
+
+        response = self.client.patch(
+            "/api/resume-review-day/settings/",
+            {"student_page_open": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["student_page_open"])
+        self.assertTrue(ResumeReviewSettings.current().student_page_open is False)
+
+    def test_closed_pages_reject_public_requests(self):
+        settings = ResumeReviewSettings.current()
+        settings.employer_page_open = False
+        settings.student_page_open = False
+        settings.save(update_fields=["employer_page_open", "student_page_open"])
+
+        self.assertEqual(
+            self.client.get("/api/resume-review-day/employer/").status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+        self.assertEqual(
+            self.client.get("/api/resume-review-day/timeslots/").status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
