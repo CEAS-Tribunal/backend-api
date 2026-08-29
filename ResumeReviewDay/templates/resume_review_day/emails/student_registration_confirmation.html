@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Resume Review Day Confirmation</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f5f5f7;color:#111827;font-family:Arial,Helvetica,sans-serif;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f5f7;">
+      <tr>
+        <td align="center" style="padding:24px 12px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="width:640px;max-width:640px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+            <tr>
+              <td style="background:#c8102e;padding:18px 22px;">
+                <div style="color:#ffffff;font-size:16px;letter-spacing:0.02em;font-weight:700;">
+                  CEAS Tribunal
+                </div>
+                <div style="color:#ffe6ea;font-size:12px;margin-top:4px;">
+                  Resume Review Day confirmation
+                </div>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:22px;">
+                <div style="font-size:16px;line-height:1.4;margin:0 0 14px 0;">
+                  Hello {{ student_name }},
+                </div>
+                <div style="font-size:14px;line-height:1.6;margin:0 0 18px 0;color:#374151;">
+                  Your Resume Review Day registration is confirmed. Here are your details:
+                </div>
+
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:separate;border-spacing:0 12px;margin:0 0 18px 0;">
+                  <tr>
+                    <td width="50%" valign="top" style="padding:0 6px;">
+                      <div style="padding:14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:14px;">
+                        <div style="font-size:11px;text-transform:uppercase;color:#6b7280;margin:0 0 6px 0;">Major</div>
+                        <div style="font-size:14px;font-weight:600;color:#111827;">{{ major }}</div>
+                      </div>
+                    </td>
+                    <td width="50%" valign="top" style="padding:0 6px;">
+                      <div style="padding:14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:14px;">
+                        <div style="font-size:11px;text-transform:uppercase;color:#6b7280;margin:0 0 6px 0;">Graduation year</div>
+                        <div style="font-size:14px;font-weight:600;color:#111827;">{{ grad_year }}</div>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+
+                {% if assigned_reviews %}
+                <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;margin:0 6px 10px 6px;">
+                  Scheduled reviews
+                </div>
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:separate;border-spacing:0 12px;">
+                  {% for review in assigned_reviews %}
+                  <tr>
+                    <td style="padding:0 6px;">
+                      <div style="padding:14px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;">
+                        <div style="font-size:14px;font-weight:700;color:#111827;margin:0 0 4px 0;">
+                          {{ review.time }}
+                        </div>
+                        <div style="font-size:14px;color:#374151;line-height:1.5;">
+                          {{ review.company_name }} — {{ review.employer_name }}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </table>
+                {% else %}
+                <div style="padding:14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;font-size:14px;color:#9a3412;line-height:1.5;">
+                  No review timeslots were assigned. If this looks wrong, please contact CEAS Tribunal.
+                </div>
+                {% endif %}
+
+                <div style="margin-top:18px;padding-top:14px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
+                  We look forward to seeing you at Resume Review Day.
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

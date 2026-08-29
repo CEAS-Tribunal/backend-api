@@ -2,12 +2,14 @@ import datetime
 import io
 
 from django.contrib.auth.models import User
+from django.core import mail
 from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import Employer, ResumeReviewSettings, Student, Timeslot
+from .views import StudentViewSet
 
 
 def _make_employer(**overrides):
@@ -179,6 +181,7 @@ class EmployerViewSetTests(TestCase):
 @override_settings(
     ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"],
     MEDIA_ROOT="/tmp/tribunal_test_media",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
 )
 class StudentViewSetTests(TestCase):
     def setUp(self):
@@ -213,6 +216,67 @@ class StudentViewSetTests(TestCase):
         for sid in slot_ids:
             self.assertIsNotNone(Timeslot.objects.get(id=sid).student)
 
+        self.assertEqual(len(mail.outbox), 1)
+        msg = mail.outbox[0]
+        self.assertEqual(msg.to, ["carl@uc.test"])
+        self.assertIn("Resume Review Day registration confirmed", msg.subject)
+        body = msg.alternatives[0][0] if msg.alternatives else msg.body
+        self.assertIn("Carl Lee", body)
+        self.assertIn("TechCorp", body)
+        self.assertIn("Jane Smith", body)
+
+    def test_post_rejects_duplicate_email(self):
+        _make_student(email="carl@uc.test")
+
+        slot_ids = list(
+            Timeslot.objects.filter(employer=self.employer)
+            .values_list("id", flat=True)[:1]
+        )
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        resume = SimpleUploadedFile("cv.pdf", b"%PDF-1.4 mock", content_type="application/pdf")
+        r = self.client.post(
+            "/api/resume-review-day/student/",
+            {
+                "full_name": "Carl Lee",
+                "email": "carl@uc.test",
+                "grad_year": "2025",
+                "major": "cs",
+                "timeslots": ",".join(slot_ids),
+                "resume": resume,
+            },
+            format="multipart",
+        )
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(r.data["detail"], StudentViewSet._DUPLICATE_EMAIL_MESSAGE)
+        self.assertEqual(Student.objects.count(), 1)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_post_rejects_duplicate_email_case_insensitive(self):
+        _make_student(email="carl@uc.test")
+
+        slot_ids = list(
+            Timeslot.objects.filter(employer=self.employer)
+            .values_list("id", flat=True)[:1]
+        )
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        resume = SimpleUploadedFile("cv.pdf", b"%PDF-1.4 mock", content_type="application/pdf")
+        r = self.client.post(
+            "/api/resume-review-day/student/",
+            {
+                "full_name": "Carl Lee",
+                "email": "Carl@UC.TEST",
+                "grad_year": "2025",
+                "major": "cs",
+                "timeslots": ",".join(slot_ids),
+                "resume": resume,
+            },
+            format="multipart",
+        )
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Student.objects.count(), 1)
+
     def test_post_ignores_already_taken_slots_gracefully(self):
         """A slot already taken is skipped; the student is still created."""
         stu_a = _make_student(full_name="Existing A", email="a@uc.test")
@@ -238,6 +302,33 @@ class StudentViewSetTests(TestCase):
         # Slot should still belong to stu_a
         slot.refresh_from_db()
         self.assertEqual(slot.student, stu_a)
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["new@uc.test"])
+
+
+@override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"])
+class EmployerViewSetEmailTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_employer_registration_does_not_send_email(self):
+        payload = {
+            "full_name": "Bob Jones",
+            "company_name": "RocketCo",
+            "email": "bob@rocket.test",
+            "phone_number": "+15135550199",
+            "diet_restriction": "",
+            "start_time": "09:00",
+            "end_time": "11:00",
+            "max_resumes": 6,
+            "uc_alumni": False,
+            "selected_majors": ["cs", "elec"],
+        }
+        with override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend"):
+            r = self.client.post("/api/resume-review-day/employer/", payload, format="json")
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(len(mail.outbox), 0)
 
 
 @override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"])
