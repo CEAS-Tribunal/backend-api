@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import Employer, ResumeReviewSettings, Student, Timeslot
+from .views import StudentViewSet
 
 
 def _make_employer(**overrides):
@@ -223,6 +224,58 @@ class StudentViewSetTests(TestCase):
         self.assertIn("Carl Lee", body)
         self.assertIn("TechCorp", body)
         self.assertIn("Jane Smith", body)
+
+    def test_post_rejects_duplicate_email(self):
+        _make_student(email="carl@uc.test")
+
+        slot_ids = list(
+            Timeslot.objects.filter(employer=self.employer)
+            .values_list("id", flat=True)[:1]
+        )
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        resume = SimpleUploadedFile("cv.pdf", b"%PDF-1.4 mock", content_type="application/pdf")
+        r = self.client.post(
+            "/api/resume-review-day/student/",
+            {
+                "full_name": "Carl Lee",
+                "email": "carl@uc.test",
+                "grad_year": "2025",
+                "major": "cs",
+                "timeslots": ",".join(slot_ids),
+                "resume": resume,
+            },
+            format="multipart",
+        )
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(r.data["detail"], StudentViewSet._DUPLICATE_EMAIL_MESSAGE)
+        self.assertEqual(Student.objects.count(), 1)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_post_rejects_duplicate_email_case_insensitive(self):
+        _make_student(email="carl@uc.test")
+
+        slot_ids = list(
+            Timeslot.objects.filter(employer=self.employer)
+            .values_list("id", flat=True)[:1]
+        )
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        resume = SimpleUploadedFile("cv.pdf", b"%PDF-1.4 mock", content_type="application/pdf")
+        r = self.client.post(
+            "/api/resume-review-day/student/",
+            {
+                "full_name": "Carl Lee",
+                "email": "Carl@UC.TEST",
+                "grad_year": "2025",
+                "major": "cs",
+                "timeslots": ",".join(slot_ids),
+                "resume": resume,
+            },
+            format="multipart",
+        )
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Student.objects.count(), 1)
 
     def test_post_ignores_already_taken_slots_gracefully(self):
         """A slot already taken is skipped; the student is still created."""

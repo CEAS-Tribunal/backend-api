@@ -1,4 +1,6 @@
 from django.db import models
+from django.db.models import UniqueConstraint
+from django.db.models.functions import Lower
 from django.core.validators import MaxValueValidator
 import cuid
 
@@ -62,6 +64,11 @@ class Student(models.Model):
     grad_year = models.IntegerField()
     major = models.CharField(max_length=30, choices=MAJOR_CHOICES)
     resume = models.FileField(upload_to='resumes/')
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(Lower("email"), name="resumereviewday_student_email_unique_ci"),
+        ]
     
     def __str__(self) -> str:
         return f"{self.full_name} - {self.major}"

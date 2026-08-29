@@ -1,5 +1,6 @@
 import logging
 
+from django.db import IntegrityError
 from rest_framework.views import APIView 
 from rest_framework.response import Response
 from rest_framework import status
@@ -207,25 +208,44 @@ class ResumeReviewSettingsView(APIView):
 class StudentViewSet(APIView):
     permission_classes = [AllowAny]
 
+    _DUPLICATE_EMAIL_MESSAGE = (
+        "A student with this email is already registered for Resume Review Day."
+    )
+
     def post(self, request):
         if not ResumeReviewSettings.current().student_page_open:
             return Response({"detail": "Student registration is closed."}, status=status.HTTP_404_NOT_FOUND)
         try:
             full_name = request.data.get("full_name")
-            email = request.data.get("email")
+            email = (request.data.get("email") or "").strip().lower()
             grad_year = int(request.data.get("grad_year"))
             major = request.data.get("major")
             resume = request.FILES.get("resume")
             timeslot_ids = request.data.get("timeslots", "")
             timeslot_ids = [t.strip() for t in timeslot_ids.split(",") if t.strip()]
 
-            student = Student.objects.create(
-                full_name=full_name,
-                email=email,
-                grad_year=grad_year,
-                major=major,
-                resume=resume,
-            )
+            if not email:
+                return Response({"detail": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if Student.objects.filter(email__iexact=email).exists():
+                return Response(
+                    {"detail": self._DUPLICATE_EMAIL_MESSAGE},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            try:
+                student = Student.objects.create(
+                    full_name=full_name,
+                    email=email,
+                    grad_year=grad_year,
+                    major=major,
+                    resume=resume,
+                )
+            except IntegrityError:
+                return Response(
+                    {"detail": self._DUPLICATE_EMAIL_MESSAGE},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             assigned_timeslots = []
             updated_slots = []
