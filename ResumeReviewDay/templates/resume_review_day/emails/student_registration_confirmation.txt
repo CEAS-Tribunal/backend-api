@@ -1,0 +1,19 @@
+Hello {{ student_name }},
+
+Your Resume Review Day registration is confirmed.
+
+Major: {{ major }}
+Graduation year: {{ grad_year }}
+
+{% if assigned_reviews %}
+Scheduled reviews:
+{% for review in assigned_reviews %}
+- {{ review.time }} with {{ review.company_name }} ({{ review.employer_name }})
+{% endfor %}
+{% else %}
+No review timeslots were assigned. If this looks wrong, please contact CEAS Tribunal.
+{% endif %}
+
+We look forward to seeing you at Resume Review Day.
+
+— CEAS Tribunal

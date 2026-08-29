@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework.views import APIView 
 from rest_framework.response import Response
 from rest_framework import status
@@ -5,7 +7,10 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from dashboard.permissions import IsStaffUser
 
+from .emailing import send_student_resume_review_confirmation
 from .models import Employer, ResumeReviewSettings, Student, Timeslot, MAJOR_CHOICES
+
+logger = logging.getLogger(__name__)
 
 from datetime import datetime, timedelta
 import pandas as pd
@@ -222,15 +227,28 @@ class StudentViewSet(APIView):
                 resume=resume,
             )
 
+            assigned_timeslots = []
             updated_slots = []
             for slot_id in timeslot_ids:
                 try:
-                    timeslot = Timeslot.objects.get(id=slot_id, student__isnull=True)  # only update if unassigned
+                    timeslot = Timeslot.objects.select_related("employer").get(
+                        id=slot_id, student__isnull=True
+                    )  # only update if unassigned
                     timeslot.student = student
                     timeslot.save()
+                    assigned_timeslots.append(timeslot)
                     updated_slots.append({'id': timeslot.id, 'timeslot': str(timeslot.timeslot)})
                 except Timeslot.DoesNotExist:
                     continue 
+
+            # Notify the student. Never block registration on email delivery.
+            try:
+                send_student_resume_review_confirmation(student, assigned_timeslots)
+            except Exception:
+                logger.exception(
+                    "Student resume review confirmation email failed",
+                    extra={"student_id": student.id},
+                )
 
             result = {
                 "message": "Student registered and timeslots assigned.",
