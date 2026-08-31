@@ -1,0 +1,24 @@
+Hello {{ user_name }},
+
+We received your reimbursement request. The treasurers have been notified.
+Only the fields that were filled out are shown below.
+
+Request ID: #{{ request_id }}
+
+{% for label, value in details %}
+{{ label }}: {{ value }}
+{% endfor %}
+
+{% if attachments %}
+
+Documents received:
+{% for a in attachments %}
+- {{ a.label }} ({{ a.filename }})
+{% endfor %}
+{% endif %}
+
+A copy of the filled reimbursement form is attached to this email.
+
+If anything looks wrong, reply to this message or contact the CEAS Tribunal treasurer.
+
+— CEAS Tribunal

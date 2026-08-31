@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reimbursement Request Received</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f5f5f7;color:#111827;font-family:Arial,Helvetica,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+      We received your reimbursement request.
+    </div>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f5f7;">
+      <tr>
+        <td align="center" style="padding:24px 12px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="width:640px;max-width:640px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+            <tr>
+              <td style="background:#c8102e;padding:18px 22px;">
+                <div style="color:#ffffff;font-size:16px;letter-spacing:0.02em;font-weight:700;">
+                  CEAS Tribunal
+                </div>
+                <div style="color:#ffe6ea;font-size:12px;margin-top:4px;">
+                  Reimbursement confirmation
+                </div>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:22px;">
+                <div style="font-size:16px;line-height:1.4;margin:0 0 14px 0;">
+                  Hello {{ user_name }},
+                </div>
+                <div style="font-size:14px;line-height:1.6;margin:0 0 18px 0;color:#374151;">
+                  We received your reimbursement request. The treasurers have been notified. Only the fields that were filled out are shown below.
+                </div>
+
+                <div style="background:#0b0f14;border-radius:12px;padding:12px 14px;margin:0 0 16px 0;">
+                  <div style="color:#9ca3af;font-size:12px;margin-bottom:6px;">Request ID</div>
+                  <div style="color:#ffffff;font-size:16px;font-weight:700;">#{{ request_id }}</div>
+                </div>
+
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:separate;border-spacing:0 12px;">
+                  {% for label, value in details %}
+                    {% if forloop.first or forloop.counter0|divisibleby:2 %}
+                    <tr>
+                    {% endif %}
+                      <td width="50%" valign="top" style="padding:0 6px;">
+                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:separate;">
+                          <tr>
+                            <td style="padding:14px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:14px;">
+                              <div style="font-size:11px;letter-spacing:0.02em;text-transform:uppercase;color:#6b7280;margin:0 0 6px 0;">
+                                {{ label }}
+                              </div>
+                              <div style="font-size:14px;color:#111827;line-height:1.5;word-break:break-word;font-weight:600;">
+                                {{ value }}
+                              </div>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    {% if forloop.counter|divisibleby:2 %}
+                    </tr>
+                    {% elif forloop.last %}
+                      <td width="50%" valign="top" style="padding:0 6px;">&nbsp;</td>
+                    </tr>
+                    {% endif %}
+                  {% endfor %}
+                </table>
+
+                {% if attachments %}
+                <div style="margin-top:6px;">
+                  <div style="margin:14px 6px 8px 6px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;">
+                    Documents received
+                  </div>
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:separate;border-spacing:0 12px;">
+                    {% for a in attachments %}
+                      {% if forloop.first or forloop.counter0|divisibleby:2 %}
+                      <tr>
+                      {% endif %}
+                        <td width="50%" valign="top" style="padding:0 6px;">
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                            <tr>
+                              <td style="padding:14px 14px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;">
+                                <div style="font-size:11px;letter-spacing:0.02em;text-transform:uppercase;color:#6b7280;margin:0 0 8px 0;">
+                                  {{ a.label }}
+                                </div>
+                                <div style="font-size:13px;color:#111827;line-height:1.5;word-break:break-word;font-weight:600;">
+                                  {{ a.filename }}
+                                </div>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      {% if forloop.counter|divisibleby:2 %}
+                      </tr>
+                      {% elif forloop.last %}
+                        <td width="50%" valign="top" style="padding:0 6px;">&nbsp;</td>
+                      </tr>
+                      {% endif %}
+                    {% endfor %}
+                  </table>
+                </div>
+                {% endif %}
+
+                <div style="margin-top:18px;padding-top:14px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
+                  A copy of the filled reimbursement form is attached to this email. If anything looks wrong, contact the CEAS Tribunal treasurer.
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <div style="max-width:640px;color:#9ca3af;font-size:11px;line-height:1.5;margin-top:14px;">
+            If you received this email in error, you can ignore it.
+          </div>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

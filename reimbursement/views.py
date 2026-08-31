@@ -10,7 +10,7 @@ from dashboard.models import ExecMember
 from dashboard.permissions import IsStaffUser, IsTreasurerOrSuperuserStaff
 
 from .models import ReimbursementRequest, UserProfile
-from .emailing import send_treasurer_reimbursement_request_created
+from .emailing import send_treasurer_reimbursement_request_created, send_email_to_user
 from .serializers import (
     ReimbursementRequestCreateSerializer,
     ReimbursementRequestFiledPatchSerializer,
@@ -122,8 +122,12 @@ class ReimbursementRequestCreateView(APIView):
         # Notify Treasurer(s). Never block request creation on email delivery.
         try:
             send_treasurer_reimbursement_request_created(req, request=request)
+            send_email_to_user(req, request=request)
         except Exception:
-            logger.exception("Treasurer notification email failed", extra={"reimbursement_request_id": req.id})
+            logger.exception(
+                "Reimbursement notification email failed",
+                extra={"reimbursement_request_id": req.id},
+            )
             if settings.DEBUG:
                 raise
 

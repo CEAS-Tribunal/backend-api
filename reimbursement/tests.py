@@ -80,11 +80,12 @@ class ReimbursementRequestCreateAPITests(TestCase):
         self.assertEqual(req.amount, Decimal("12.34"))
         self.assertTrue(req.itemized_receipt.name)
 
-        # Treasurer notification sent and does not include empty optional fields.
-        self.assertEqual(len(mail.outbox), 1)
-        msg = mail.outbox[0]
-        self.assertIn("treasurer@test.edu", msg.to)
-        html = msg.alternatives[0][0] if msg.alternatives else msg.body
+        # Treasurer notification + submitter confirmation.
+        self.assertEqual(len(mail.outbox), 2)
+        treasurer_msg = next(m for m in mail.outbox if "treasurer@test.edu" in m.to)
+        user_msg = next(m for m in mail.outbox if "exec@mail.uc.edu" in m.to)
+
+        html = treasurer_msg.alternatives[0][0] if treasurer_msg.alternatives else treasurer_msg.body
         self.assertIn("Hello", html)
         self.assertIn("Terry Treasurer", html)
         self.assertIn("M12345678", html)
@@ -92,10 +93,17 @@ class ReimbursementRequestCreateAPITests(TestCase):
         self.assertIn("Team supplies", html)
         self.assertNotIn("Mailing address line 2", html)
         self.assertNotIn("IC participant", html)
-        self.assertEqual(len(msg.attachments), 2)
-        attachment_names = {a[0] for a in msg.attachments}
+        self.assertEqual(len(treasurer_msg.attachments), 2)
+        attachment_names = {a[0] for a in treasurer_msg.attachments}
         self.assertTrue(any(name.startswith("receipt") and name.endswith(".pdf") for name in attachment_names))
         self.assertIn(f"reimbursement_request_{req.id}.pdf", attachment_names)
+
+        user_html = user_msg.alternatives[0][0] if user_msg.alternatives else user_msg.body
+        self.assertIn("We received your reimbursement request", user_html)
+        self.assertIn("M12345678", user_html)
+        self.assertIn("Test Vendor", user_html)
+        self.assertEqual(len(user_msg.attachments), 1)
+        self.assertEqual(user_msg.attachments[0][0], f"reimbursement_request_{req.id}.pdf")
 
     def test_create_with_supporting_document_optional(self):
         support = SimpleUploadedFile("extra.png", b"\x89PNG\r\n", content_type="image/png")
@@ -117,8 +125,8 @@ class ReimbursementRequestCreateAPITests(TestCase):
         req = ReimbursementRequest.objects.get(pk=r.data["id"])
         self.assertTrue(req.supporting_document.name)
 
-        self.assertEqual(len(mail.outbox), 1)
-        msg = mail.outbox[0]
+        self.assertEqual(len(mail.outbox), 2)
+        msg = next(m for m in mail.outbox if "treasurer@test.edu" in m.to)
         attachment_names = {a[0] for a in msg.attachments}
         self.assertTrue(any(name.startswith("receipt") and name.endswith(".pdf") for name in attachment_names))
         self.assertTrue(any(name.startswith("extra") and name.endswith(".png") for name in attachment_names))
