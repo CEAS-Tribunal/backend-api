@@ -272,3 +272,74 @@ def send_treasurer_reimbursement_request_created(
 
     return sent
 
+
+def send_email_to_user(
+    req: ReimbursementRequest,
+    *,
+    request=None,
+) -> int:
+    """
+    Confirm to the submitter that their reimbursement request was received.
+    """
+    email = _clean(req.email)
+    if not email:
+        logger.warning(
+            "No submitter email on reimbursement request; skipping confirmation",
+            extra={"reimbursement_request_id": req.id},
+        )
+        return 0
+
+    details = _request_details(req, request=request)
+    attachments = _attachments(req, request=request)
+    environ_condition = "DEV - " if settings.DEBUG else ""
+    amount_part = f" (${req.amount:.2f})" if req.amount is not None else ""
+    subject = environ_condition + f"We received your reimbursement request{amount_part}"
+
+    try:
+        ctx = {
+            "user_name": _clean(req.name) or "there",
+            "request_id": req.id,
+            "details": details,
+            "attachments": attachments,
+        }
+        text_body = render_to_string(
+            "reimbursement/emails/user_reimbursement_request_created.txt",
+            ctx,
+        )
+        html_body = render_to_string(
+            "reimbursement/emails/user_reimbursement_request_created.html",
+            ctx,
+        )
+
+        msg = EmailMultiAlternatives(
+            subject=subject,
+            body=text_body,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@tribunal.uc.edu"),
+            to=[email],
+        )
+        msg.attach_alternative(html_body, "text/html")
+
+        try:
+            filled = build_filled_reimbursement_pdf(req)
+            if filled is not None and filled.content:
+                msg.attach(filled.filename, filled.content, "application/pdf")
+        except Exception:
+            logger.exception(
+                "Failed to generate filled reimbursement PDF for submitter confirmation",
+                extra={"reimbursement_request_id": req.id},
+            )
+
+        sent = msg.send(fail_silently=True)
+        if sent != 1:
+            logger.warning(
+                "Submitter confirmation email not accepted by backend",
+                extra={"reimbursement_request_id": req.id, "to": email, "sent": sent},
+            )
+        return sent
+    except Exception:
+        logger.exception(
+            "Submitter confirmation email errored",
+            extra={"reimbursement_request_id": req.id, "to": email},
+        )
+        return 0
+
