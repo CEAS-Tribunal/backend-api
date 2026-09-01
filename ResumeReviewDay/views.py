@@ -193,7 +193,7 @@ class AdminResumeDownloadView(APIView):
                 .order_by("company_name")
             )
             for emp in employers:
-                folder = _safe_path_component(emp.company_name)
+                folder = _safe_path_component(emp.full_name)
                 used_names: dict[str, int] = {}
 
                 for slot in (
