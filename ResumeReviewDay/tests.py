@@ -1,8 +1,10 @@
 import datetime
 import io
+import zipfile
 
 from django.contrib.auth.models import User
 from django.core import mail
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -494,6 +496,94 @@ class AdminResumeRosterViewTests(TestCase):
         majors = r.data[0]["selected_majors"]
         self.assertIn("Computer Science", majors)
         self.assertNotIn("cs", majors)
+
+
+@override_settings(
+    ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"],
+    MEDIA_ROOT="/tmp/tribunal_test_media_rrd_download",
+)
+class AdminResumeDownloadViewTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(username="download-admin", password="pass12345")
+        self.user.is_staff = True
+        self.user.save(update_fields=["is_staff"])
+
+    def _auth(self, user=None):
+        u = user or self.user
+        token = RefreshToken.for_user(u)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
+
+    def _student_with_resume(self, **overrides):
+        defaults = {
+            "full_name": "Alice Brown",
+            "email": "alice@uc.test",
+            "grad_year": 2026,
+            "major": "cs",
+        }
+        defaults.update(overrides)
+        resume = SimpleUploadedFile(
+            f"{defaults['full_name'].replace(' ', '_')}.pdf",
+            b"%PDF-1.4 mock resume",
+            content_type="application/pdf",
+        )
+        return Student.objects.create(**defaults, resume=resume)
+
+    def test_unauthenticated_returns_401(self):
+        r = self.client.get("/api/resume-review-day/resumes/download/")
+        self.assertEqual(r.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_non_staff_forbidden(self):
+        non_staff = User.objects.create_user(username="no-download", password="pass12345")
+        self._auth(non_staff)
+        r = self.client.get("/api/resume-review-day/resumes/download/")
+        self.assertEqual(r.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_download_returns_zip_grouped_by_company_name(self):
+        emp_a = _make_employer(company_name="Alpha Co", email="a@a.test")
+        emp_b = _make_employer(company_name="Beta Co", email="b@b.test")
+        stu_a = self._student_with_resume(full_name="Alice Brown", email="alice@uc.test")
+        stu_b = self._student_with_resume(full_name="Bob Wilson", email="bob@uc.test")
+
+        slot_a = Timeslot.objects.filter(employer=emp_a).first()
+        slot_a.student = stu_a
+        slot_a.save()
+        slot_b = Timeslot.objects.filter(employer=emp_b).first()
+        slot_b.student = stu_b
+        slot_b.save()
+
+        self._auth()
+        r = self.client.get("/api/resume-review-day/resumes/download/")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r["Content-Type"], "application/zip")
+        self.assertIn("resume-review-day-resumes.zip", r["Content-Disposition"])
+
+        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+            names = zf.namelist()
+            self.assertIn("Alpha Co/9-00_AM_Alice Brown.pdf", names)
+            self.assertIn("Beta Co/9-00_AM_Bob Wilson.pdf", names)
+            self.assertEqual(len(names), 2)
+
+    def test_student_assigned_to_multiple_employers_appears_in_both_folders(self):
+        emp_a = _make_employer(company_name="Alpha Co", email="a@a.test")
+        emp_b = _make_employer(company_name="Beta Co", email="b@b.test")
+        stu = self._student_with_resume(full_name="Shared Student", email="shared@uc.test")
+
+        slot_a = Timeslot.objects.filter(employer=emp_a).first()
+        slot_a.student = stu
+        slot_a.save()
+        slot_b = Timeslot.objects.filter(employer=emp_b).first()
+        slot_b.student = stu
+        slot_b.save()
+
+        self._auth()
+        r = self.client.get("/api/resume-review-day/resumes/download/")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+
+        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+            names = zf.namelist()
+            self.assertIn("Alpha Co/9-00_AM_Shared Student.pdf", names)
+            self.assertIn("Beta Co/9-00_AM_Shared Student.pdf", names)
 
 
 @override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"])

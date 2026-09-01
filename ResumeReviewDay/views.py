@@ -1,6 +1,11 @@
+import io
 import logging
+import re
+import zipfile
+from pathlib import Path
 
 from django.db import IntegrityError
+from django.http import HttpResponse
 from rest_framework.views import APIView 
 from rest_framework.response import Response
 from rest_framework import status
@@ -160,6 +165,73 @@ class AdminResumeRosterView(APIView):
                 }
             )
         return Response(results, status=status.HTTP_200_OK)
+
+
+def _safe_path_component(name: str, fallback: str = "Unknown") -> str:
+    """Strip characters that are invalid in zip entry paths."""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", (name or "").strip())
+    return (cleaned[:80] or fallback)
+
+
+def _format_timeslot_for_filename(t) -> str:
+    """Format a timeslot for use in a zip entry filename."""
+    label = _format_time_12h(t).replace(":", "-").replace(" ", "_")
+    return _safe_path_component(label, "Unknown_Time")
+
+
+class AdminResumeDownloadView(APIView):
+    """Staff-only zip of all assigned resumes, grouped by employer company name."""
+
+    permission_classes = [IsAuthenticated, IsStaffUser]
+
+    def get(self, request):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            employers = (
+                Employer.objects.prefetch_related("timeslot_set__student")
+                .all()
+                .order_by("company_name")
+            )
+            for emp in employers:
+                folder = _safe_path_component(emp.company_name)
+                used_names: dict[str, int] = {}
+
+                for slot in (
+                    emp.timeslot_set.filter(student__isnull=False)
+                    .select_related("student")
+                    .order_by("timeslot")
+                ):
+                    student = slot.student
+                    if student is None:
+                        continue
+
+                    if not student.resume or not student.resume.name:
+                        continue
+
+                    ext = Path(student.resume.name).suffix or ".pdf"
+                    timeslot_label = _format_timeslot_for_filename(slot.timeslot)
+                    student_name = _safe_path_component(student.full_name, "Student")
+                    base_name = f"{timeslot_label}_{student_name}"
+                    count = used_names.get(base_name, 0)
+                    used_names[base_name] = count + 1
+                    file_name = base_name if count == 0 else f"{base_name}_{count + 1}"
+                    arcname = f"{folder}/{file_name}{ext}"
+
+                    try:
+                        with student.resume.open("rb") as resume_file:
+                            zf.writestr(arcname, resume_file.read())
+                    except OSError:
+                        logger.exception(
+                            "Failed to read resume for zip download",
+                            extra={"student_id": student.id, "employer_id": emp.id},
+                        )
+
+        buf.seek(0)
+        response = HttpResponse(buf.getvalue(), content_type="application/zip")
+        response["Content-Disposition"] = (
+            'attachment; filename="resume-review-day-resumes.zip"'
+        )
+        return response
 
 
 class ResumeReviewSettingsView(APIView):
