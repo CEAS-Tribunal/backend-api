@@ -16,10 +16,7 @@ from .models import OrgFundingRequest
 logger = logging.getLogger(__name__)
 
 
-ORG_FUNDING_NOTIFICATION_EMAILS = [
-    "org-funding@ucmail.uc.edu",
-    "bhavarss@mail.uc.edu"
-]
+ORG_FUNDING_NOTIFICATION_EMAIL = "org-funding@ucmail.uc.edu"
 
 def _clean(s: str | None) -> str:
     return (s or "").strip()
@@ -149,7 +146,7 @@ def send_org_funding_request_created(
             subject=subject,
             body=text_body,
             from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@tribunal.uc.edu"),
-            to=ORG_FUNDING_NOTIFICATION_EMAILS,
+            to=ORG_FUNDING_NOTIFICATION_EMAIL,
         )
         msg.attach_alternative(html_body, "text/html")
 
@@ -163,12 +160,12 @@ def send_org_funding_request_created(
         if sent_one != 1:
             logger.warning(
                 "Org funding notification email not accepted by backend",
-                extra={"org_funding_request_id": req.id, "to": "org-funding@ucmail.uc.edu"},
+                extra={"org_funding_request_id": req.id, "to": ORG_FUNDING_NOTIFICATION_EMAIL},
             )
     except Exception:
         logger.exception(
             "Org funding notification email errored",
-            extra={"org_funding_request_id": req.id, "to": "org-funding@ucmail.uc.edu"},
+            extra={"org_funding_request_id": req.id, "to": ORG_FUNDING_NOTIFICATION_EMAIL},
         )
 
     return sent
