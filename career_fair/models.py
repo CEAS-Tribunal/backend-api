@@ -11,6 +11,7 @@ class Representative(models.Model):
     booth_location = models.CharField(max_length=250)
     building_location = models.CharField(max_length=250)
     signed_in_at = models.DateTimeField(auto_now_add=True)
+    is_printed = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-signed_in_at"]

@@ -29,6 +29,7 @@ class RepresentativeAPITests(TestCase):
         self.assertEqual(r.data["company"], "Acme Corp")
         self.assertIn("id", r.data)
         self.assertIn("signed_in_at", r.data)
+        self.assertFalse(r.data["is_printed"])
 
     def test_get_requires_authentication(self):
         Representative.objects.create(
@@ -78,4 +79,59 @@ class RepresentativeAPITests(TestCase):
         outsider = User.objects.create_user(username="nostaff", password="pass12345")
         self.client.force_authenticate(user=outsider)
         r = self.client.get("/api/career-fair/representatives/")
+        self.assertEqual(r.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_patch_printed_requires_auth(self):
+        rep = Representative.objects.create(
+            name="X",
+            company="Y",
+            title="T",
+            email="x@y.test",
+            booth_location="B1",
+            building_location="tuc-great-hall",
+        )
+        r = self.client.patch(
+            f"/api/career-fair/representatives/{rep.id}/printed/",
+            {"is_printed": True},
+            format="json",
+        )
+        self.assertEqual(r.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_patch_printed_marks_representative(self):
+        rep = Representative.objects.create(
+            name="Jane",
+            company="Acme",
+            title="Recruiter",
+            email="jane@acme.test",
+            booth_location="A1",
+            building_location="rec-center",
+        )
+        self.assertFalse(rep.is_printed)
+        self.client.force_authenticate(user=self.user)
+        r = self.client.patch(
+            f"/api/career-fair/representatives/{rep.id}/printed/",
+            {"is_printed": True},
+            format="json",
+        )
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertTrue(r.data["is_printed"])
+        rep.refresh_from_db()
+        self.assertTrue(rep.is_printed)
+
+    def test_patch_printed_non_staff_forbidden(self):
+        rep = Representative.objects.create(
+            name="X",
+            company="Y",
+            title="T",
+            email="x@y.test",
+            booth_location="B1",
+            building_location="tuc-great-hall",
+        )
+        outsider = User.objects.create_user(username="nostaff", password="pass12345")
+        self.client.force_authenticate(user=outsider)
+        r = self.client.patch(
+            f"/api/career-fair/representatives/{rep.id}/printed/",
+            {"is_printed": True},
+            format="json",
+        )
         self.assertEqual(r.status_code, status.HTTP_403_FORBIDDEN)

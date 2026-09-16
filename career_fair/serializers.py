@@ -15,5 +15,10 @@ class RepresentativeSerializer(serializers.ModelSerializer):
             "booth_location",
             "building_location",
             "signed_in_at",
+            "is_printed",
         ]
-        read_only_fields = ["id", "signed_in_at"]
+        read_only_fields = ["id", "signed_in_at", "is_printed"]
+
+
+class RepresentativePrintedPatchSerializer(serializers.Serializer):
+    is_printed = serializers.BooleanField()
