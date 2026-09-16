@@ -18,6 +18,7 @@ class RepresentativeListCreateView(generics.ListCreateAPIView):
     """
 
     serializer_class = RepresentativeSerializer
+    pagination_class = None
 
     def get_queryset(self):
         qs = Representative.objects.all()

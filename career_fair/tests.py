@@ -63,9 +63,9 @@ class RepresentativeAPITests(TestCase):
         self.client.force_authenticate(user=self.user)
         r = self.client.get("/api/career-fair/representatives/", {"search": "Gamma"})
         self.assertEqual(r.status_code, status.HTTP_200_OK)
-        results = r.data["results"] if isinstance(r.data, dict) else r.data
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["company"], "Gamma Inc")
+        self.assertIsInstance(r.data, list)
+        self.assertEqual(len(r.data), 1)
+        self.assertEqual(r.data[0]["company"], "Gamma Inc")
 
     def test_get_list_non_staff_forbidden(self):
         Representative.objects.create(
