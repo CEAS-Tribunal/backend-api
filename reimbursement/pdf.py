@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import NameObject, TextStringObject
 
 from .models import ReimbursementRequest
+
+_DESCRIPTION_FIELD = "expenditure_description"
+# pypdf only wraps multiline text when /DA font size is 0 (autosize). The
+# template locks the description at 12pt, so long values render as one clipped
+# line. Autosize wraps to the description textbox and scales to stay inside it.
+_DA_FONT_SIZE_RE = re.compile(r"(\S+)\s+[\d.]+\s+Tf")
 
 
 @dataclass(frozen=True)
@@ -31,6 +39,23 @@ def _fmt_money(v: object) -> str:
         return f"{float(v):.2f}"
     except Exception:
         return str(v)
+
+
+def _wrap_description_in_textbox(page) -> None:
+    annots = page.get("/Annots")
+    if not annots:
+        return
+    for annot in annots:
+        widget = annot.get_object()
+        if str(widget.get("/T") or "") != _DESCRIPTION_FIELD:
+            continue
+        da = widget.get("/DA")
+        if not da:
+            return
+        widget[NameObject("/DA")] = TextStringObject(
+            _DA_FONT_SIZE_RE.sub(r"\1 0 Tf", str(da), count=1)
+        )
+        return
 
 
 def build_filled_reimbursement_pdf(req: ReimbursementRequest) -> FilledPdf | None:
@@ -100,6 +125,7 @@ def build_filled_reimbursement_pdf(req: ReimbursementRequest) -> FilledPdf | Non
     # browser preview, etc.) show text without requiring interactive form focus.
     if writer.pages:
         page0 = writer.pages[0]
+        _wrap_description_in_textbox(page0)
         writer.update_page_form_field_values(
             page0,
             {**fields, **checkbox_values},

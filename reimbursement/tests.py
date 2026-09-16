@@ -327,3 +327,51 @@ class ReimbursementPdfTests(TestCase):
         self.assertIn(b"Jane Doe", combined)
         self.assertIn(b"Staples", combined)
         self.assertIn(b"Officer Bob", combined)
+
+    def test_filled_pdf_wraps_long_description_inside_textbox(self):
+        from pypdf import PdfReader
+
+        from reimbursement.pdf import build_filled_reimbursement_pdf
+
+        description = (
+            "Purchased supplies for the spring career fair including tablecloths, "
+            "banners, name tags, and catering for 80 attendees plus extra printing "
+            "of flyers and directional signage for the Tangeman University Center "
+            "event space."
+        )
+        req = ReimbursementRequest.objects.create(
+            name="Jane Doe",
+            position="President",
+            email="jane@test.edu",
+            m_number="M87654321",
+            vendor_id="VENDOR-TEST-001",
+            date="2026-04-06",
+            vendor_name="Staples",
+            amount=Decimal("99.99"),
+            description=description,
+            budgeted=True,
+            reimbursement_type="direct deposit",
+        )
+
+        filled = build_filled_reimbursement_pdf(req)
+        self.assertIsNotNone(filled)
+        assert filled is not None
+
+        reader = PdfReader(BytesIO(filled.content))
+        page = reader.pages[0]
+        resources = page["/Resources"].get_object()
+        xobjects = resources.get("/XObject").get_object()
+        desc_streams = [
+            obj.get_data()
+            for key, ref in xobjects.items()
+            if str(key) == "/Fm_expenditure_description"
+            for obj in [ref.get_object()]
+        ]
+        self.assertEqual(len(desc_streams), 1)
+        stream = desc_streams[0]
+        self.assertIn(b"Purchased supplies", stream)
+        self.assertIn(b"event space", stream)
+        # Word wrap produces multiple shown-text operators instead of one clipped line.
+        self.assertGreaterEqual(stream.count(b"Tj"), 2)
+        # Stay inside the template textbox: autosize shrinks below the 12pt DA size.
+        self.assertNotIn(b"/Fo0Form 12.0 Tf", stream)
