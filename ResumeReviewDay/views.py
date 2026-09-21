@@ -105,13 +105,20 @@ class EmployerViewSet(APIView):
                 uc_alumni=uc_alumni,
                 selected_majors=selected_majors,
             )
-
             
             for i in range(interval_count):
-               Timeslot.objects.create(
+                timeslot = (start_dt + timedelta(minutes=(20 * i))).time()
+                if i == 0:
+                    timeslot = start_dt
+                else:
+                    timeslot = (start_dt + timedelta(minutes=(20 * i)))
+                    if timeslot.hour == 12:
+                        continue
+
+                Timeslot.objects.create(
                     employer=employer,
-                    timeslot=(start_dt + timedelta(minutes=(20 * i))).time()
-               ) 
+                    timeslot=timeslot.time()
+                ) 
 
             return Response({'message': 'Employer and Timeslots created!', 'id': employer.id}, status=status.HTTP_201_CREATED)
         except Exception as e:
