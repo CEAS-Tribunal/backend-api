@@ -121,6 +121,50 @@ TEMPLATES = [
     },
 ]
 
+_LOG_DIR = BASE_DIR / "logs"
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,  # Keeps Django's internal loggers alive
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
+            "style": "{",
+        },
+        "simple": {
+            "format": "{levelname} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+        "file": {
+            "class": "logging.FileHandler",
+            "filename": str(_LOG_DIR / "django_errors.log"),
+            "formatter": "verbose",
+            "level": "ERROR",
+        },
+    },
+    "loggers": {
+        # Catch-all logger for your custom application code
+        "": {
+            "handlers": ["console", "file"],
+            "level": "INFO",
+        },
+        # Internal Django logger
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,  # Prevents duplicate logging to the root logger
+        },
+    },
+}
+
+
 WSGI_APPLICATION = 'backendapi.wsgi.application'
 
 

@@ -60,13 +60,14 @@ def _wrap_description_in_textbox(page) -> None:
 
 def build_filled_reimbursement_pdf(req: ReimbursementRequest) -> FilledPdf | None:
     """
-    Fill `reimbursement/assets/reimbursements_template.pdf` with request data.
+    Fill `reimbursement/assets/template.pdf` with request data.
 
     Notes:
     - "title in EAST" is the exec position (req.position).
+    - Name/title/email use IC participant fields when ic_competition is set.
     - Address is only populated for check reimbursements.
     """
-    template_path = Path(__file__).resolve().parent / "assets" / "reimbursements_template.pdf"
+    template_path = Path(__file__).resolve().parent / "assets" / "template.pdf"
     if not template_path.exists():
         return None
 
@@ -77,9 +78,11 @@ def build_filled_reimbursement_pdf(req: ReimbursementRequest) -> FilledPdf | Non
     if req.ic_competition:
         name = req.ic_participant_name
         title = req.ic_participant_role
+        email = (req.ic_participant_email or "").strip()
     else:
         name = req.name
         title = req.position
+        email = (req.email or "").strip()
 
     reimbursement_type = (req.reimbursement_type or "").strip().lower()
     is_check = reimbursement_type == "check"
@@ -96,7 +99,8 @@ def build_filled_reimbursement_pdf(req: ReimbursementRequest) -> FilledPdf | Non
     fields: dict[str, str] = {
         "name": name,
         "title": title,
-        "date_submitted": _fmt_date(getattr(req, "created_at", None) or datetime.now()),
+        "email": email,
+        "date_top": _fmt_date(getattr(req, "created_at", None) or datetime.now()),
         "m_number": (req.m_number or "").strip(),
         "expenditure_date": _fmt_date(req.date),
         "expenditure_vendor": (req.vendor_name or "").strip(),
@@ -121,18 +125,18 @@ def build_filled_reimbursement_pdf(req: ReimbursementRequest) -> FilledPdf | Non
         if (req.non_budgeted_officer_position or "").strip():
             fields["approver_position"] = (req.non_budgeted_officer_position or "").strip()
 
-    # Flatten filled values into page content so PDF viewers (email clients,
-    # browser preview, etc.) show text without requiring interactive form focus.
+    # Keep widgets editable. Regenerate appearances so filled values show in
+    # PDF readers without requiring field focus (email inline previews may
+    # still look blank until the attachment is opened).
     if writer.pages:
         page0 = writer.pages[0]
         _wrap_description_in_textbox(page0)
         writer.update_page_form_field_values(
             page0,
             {**fields, **checkbox_values},
-            auto_regenerate=False,
-            flatten=True,
+            auto_regenerate=True,
+            flatten=False,
         )
-        writer.remove_annotations(subtypes="/Widget")
 
     buf = BytesIO()
     writer.write(buf)

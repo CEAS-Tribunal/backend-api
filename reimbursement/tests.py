@@ -278,8 +278,27 @@ class ReimbursementRequestListAndFiledAPITests(TestCase):
         self.assertEqual(r.status_code, status.HTTP_200_OK, r.data)
 
 
+def _widget_by_name(page, field_name: str):
+    for annot in page.get("/Annots") or []:
+        widget = annot.get_object()
+        if str(widget.get("/T") or "") == field_name:
+            return widget
+    return None
+
+
+def _appearance_stream_bytes(widget) -> bytes:
+    ap = widget.get("/AP")
+    if not ap:
+        return b""
+    ap = ap.get_object()
+    normal = ap.get("/N")
+    if not normal:
+        return b""
+    return normal.get_object().get_data()
+
+
 class ReimbursementPdfTests(TestCase):
-    def test_filled_pdf_flattens_field_values_for_viewers(self):
+    def test_filled_pdf_keeps_fields_editable_with_values(self):
         from pypdf import PdfReader
 
         from reimbursement.pdf import build_filled_reimbursement_pdf
@@ -310,23 +329,17 @@ class ReimbursementPdfTests(TestCase):
 
         reader = PdfReader(BytesIO(filled.content))
         page = reader.pages[0]
-        self.assertFalse(page.get("/Annots"))
+        self.assertTrue(page.get("/Annots"))
 
-        resources = page["/Resources"].get_object()
-        xobjects = resources.get("/XObject")
-        self.assertIsNotNone(xobjects)
-        xobjects = xobjects.get_object()
+        fields = reader.get_fields() or {}
+        self.assertEqual(str(fields["name"].get("/V")), "Jane Doe")
+        self.assertEqual(str(fields["email"].get("/V")), "jane@test.edu")
+        self.assertEqual(str(fields["expenditure_vendor"].get("/V")), "Staples")
+        self.assertEqual(str(fields["approver_name"].get("/V")), "Officer Bob")
 
-        flattened_streams = [
-            obj.get_data()
-            for key, ref in xobjects.items()
-            if str(key).startswith("/Fm_")
-            for obj in [ref.get_object()]
-        ]
-        combined = b"".join(flattened_streams)
-        self.assertIn(b"Jane Doe", combined)
-        self.assertIn(b"Staples", combined)
-        self.assertIn(b"Officer Bob", combined)
+        name_widget = _widget_by_name(page, "name")
+        self.assertIsNotNone(name_widget)
+        self.assertIn(b"Jane Doe", _appearance_stream_bytes(name_widget))
 
     def test_filled_pdf_wraps_long_description_inside_textbox(self):
         from pypdf import PdfReader
@@ -359,16 +372,9 @@ class ReimbursementPdfTests(TestCase):
 
         reader = PdfReader(BytesIO(filled.content))
         page = reader.pages[0]
-        resources = page["/Resources"].get_object()
-        xobjects = resources.get("/XObject").get_object()
-        desc_streams = [
-            obj.get_data()
-            for key, ref in xobjects.items()
-            if str(key) == "/Fm_expenditure_description"
-            for obj in [ref.get_object()]
-        ]
-        self.assertEqual(len(desc_streams), 1)
-        stream = desc_streams[0]
+        desc_widget = _widget_by_name(page, "expenditure_description")
+        self.assertIsNotNone(desc_widget)
+        stream = _appearance_stream_bytes(desc_widget)
         self.assertIn(b"Purchased supplies", stream)
         self.assertIn(b"event space", stream)
         # Word wrap produces multiple shown-text operators instead of one clipped line.
