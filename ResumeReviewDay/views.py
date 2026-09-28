@@ -21,7 +21,11 @@ logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 import pandas as pd
 
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
+
 _MAJOR_LABEL = dict(MAJOR_CHOICES)
+
 
 
 def _format_time_12h(t):
@@ -40,6 +44,7 @@ class EmployerViewSet(APIView):
         Adds an employer to the list of employers
     '''
 
+    @method_decorator(cache_page(60 * 60, key_prefix='employer_list'))
     def get(self, request):
         """Public list of registered employers with available slot counts."""
         if not ResumeReviewSettings.current().employer_page_open:
@@ -130,6 +135,8 @@ class AdminResumeRosterView(APIView):
 
     permission_classes = [IsAuthenticated, IsStaffUser]
 
+
+    @method_decorator(cache_page(60 * 60, key_prefix='admin_resume_roster'))
     def get(self, request):
         employers = (
             Employer.objects.prefetch_related("timeslot_set", "timeslot_set__student")
