@@ -146,7 +146,7 @@ def send_org_funding_request_created(
             subject=subject,
             body=text_body,
             from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@tribunal.uc.edu"),
-            to=ORG_FUNDING_NOTIFICATION_EMAIL,
+            to=[ORG_FUNDING_NOTIFICATION_EMAIL],
         )
         msg.attach_alternative(html_body, "text/html")
 
