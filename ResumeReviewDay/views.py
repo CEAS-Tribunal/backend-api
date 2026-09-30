@@ -5,6 +5,7 @@ import zipfile
 from pathlib import Path
 
 from django.db import IntegrityError
+from django.db.models import Count, Prefetch, Q
 from django.http import HttpResponse
 from rest_framework.views import APIView 
 from rest_framework.response import Response
@@ -13,6 +14,14 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from dashboard.permissions import IsStaffUser
 
+from .cache import (
+    cache_versions,
+    cached_value,
+    employer_list_key,
+    page_flags,
+    roster_key,
+    timeslots_key,
+)
 from .emailing import send_student_resume_review_confirmation
 from .models import Employer, ResumeReviewSettings, Student, Timeslot, MAJOR_CHOICES
 
@@ -21,10 +30,101 @@ logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 import pandas as pd
 
-from django.views.decorators.cache import cache_page
-from django.utils.decorators import method_decorator
-
 _MAJOR_LABEL = dict(MAJOR_CHOICES)
+
+
+def _employer_list_payload():
+    employers = (
+        Employer.objects.annotate(
+            available_slots=Count(
+                "timeslot",
+                filter=Q(timeslot__student__isnull=True),
+            )
+        )
+        .order_by("company_name")
+    )
+    results = []
+    for emp in employers:
+        labels = [_MAJOR_LABEL.get(code, code) for code in emp.selected_majors]
+        results.append(
+            {
+                "id": emp.id,
+                "full_name": emp.full_name,
+                "company_name": emp.company_name,
+                "selected_majors": labels,
+                "available_slots": emp.available_slots,
+            }
+        )
+    return results
+
+
+def _roster_payload():
+    employers = (
+        Employer.objects.prefetch_related("timeslot_set", "timeslot_set__student")
+        .all()
+        .order_by("company_name")
+    )
+    results = []
+    for emp in employers:
+        slots = []
+        for slot in emp.timeslot_set.all().order_by("timeslot"):
+            student = slot.student
+            slots.append(
+                {
+                    "slot_id": slot.id,
+                    "time": _format_time_12h(slot.timeslot),
+                    "student": (
+                        {
+                            "id": student.id,
+                            "full_name": student.full_name,
+                            "email": student.email,
+                            "major": _MAJOR_LABEL.get(student.major, student.major),
+                            "grad_year": student.grad_year,
+                        }
+                        if student
+                        else None
+                    ),
+                }
+            )
+        results.append(
+            {
+                "id": emp.id,
+                "full_name": emp.full_name,
+                "company_name": emp.company_name,
+                "email": emp.email,
+                "selected_majors": [_MAJOR_LABEL.get(c, c) for c in emp.selected_majors],
+                "start_time": _format_time_12h(emp.start_time),
+                "end_time": _format_time_12h(emp.end_time),
+                "max_resumes": emp.max_resumes,
+                "slots": slots,
+            }
+        )
+    return results
+
+
+def _timeslot_payload(major, time_params):
+    times_filter = _parse_time_params(time_params)
+    open_slots = Timeslot.objects.filter(student__isnull=True).order_by("timeslot")
+    employers = Employer.objects.all()
+    if major:
+        employers = employers.filter(selected_majors__contains=major)
+    employers = employers.prefetch_related(
+        Prefetch("timeslot_set", queryset=open_slots, to_attr="open_slots")
+    )
+
+    results = []
+    for employer in employers:
+        slots = _slots_for_employer(employer.open_slots, times_filter)
+        if slots:
+            results.append(
+                {
+                    "id": employer.id,
+                    "full_name": employer.full_name,
+                    "company_name": employer.company_name,
+                    "timeslots": slots,
+                }
+            )
+    return results
 
 
 
@@ -44,29 +144,15 @@ class EmployerViewSet(APIView):
         Adds an employer to the list of employers
     '''
 
-    @method_decorator(cache_page(60 * 60, key_prefix='employer_list'))
     def get(self, request):
         """Public list of registered employers with available slot counts."""
-        if not ResumeReviewSettings.current().employer_page_open:
+        if not page_flags()["employer_page_open"]:
             return Response({"detail": "Employer registration is closed."}, status=status.HTTP_404_NOT_FOUND)
-        employers = Employer.objects.all().order_by("company_name")
-        results = []
-        for emp in employers:
-            available = Timeslot.objects.filter(employer=emp, student__isnull=True).count()
-            labels = [_MAJOR_LABEL.get(code, code) for code in emp.selected_majors]
-            results.append(
-                {
-                    "id": emp.id,
-                    "full_name": emp.full_name,
-                    "company_name": emp.company_name,
-                    "selected_majors": labels,
-                    "available_slots": available,
-                }
-            )
+        results = cached_value(employer_list_key, _employer_list_payload)
         return Response(results, status=status.HTTP_200_OK)
 
     def post(self, request):
-        if not ResumeReviewSettings.current().employer_page_open:
+        if not page_flags()["employer_page_open"]:
             return Response({"detail": "Employer registration is closed."}, status=status.HTTP_404_NOT_FOUND)
         try:
             full_name = request.data.get("full_name")
@@ -130,54 +216,23 @@ class EmployerViewSet(APIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+class ResumeReviewCacheVersionView(APIView):
+    """Current cache versions. Reads Redis only, so the client can detect invalidation."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response(cache_versions(), status=status.HTTP_200_OK)
+
+
 class AdminResumeRosterView(APIView):
     """Staff-only roster of all RRD employers, timeslots, and assigned students."""
 
     permission_classes = [IsAuthenticated, IsStaffUser]
 
 
-    @method_decorator(cache_page(60 * 60, key_prefix='admin_resume_roster'))
     def get(self, request):
-        employers = (
-            Employer.objects.prefetch_related("timeslot_set", "timeslot_set__student")
-            .all()
-            .order_by("company_name")
-        )
-        results = []
-        for emp in employers:
-            slots = []
-            for slot in emp.timeslot_set.all().order_by("timeslot"):
-                student = slot.student
-                slots.append(
-                    {
-                        "slot_id": slot.id,
-                        "time": _format_time_12h(slot.timeslot),
-                        "student": (
-                            {
-                                "id": student.id,
-                                "full_name": student.full_name,
-                                "email": student.email,
-                                "major": _MAJOR_LABEL.get(student.major, student.major),
-                                "grad_year": student.grad_year,
-                            }
-                            if student
-                            else None
-                        ),
-                    }
-                )
-            results.append(
-                {
-                    "id": emp.id,
-                    "full_name": emp.full_name,
-                    "company_name": emp.company_name,
-                    "email": emp.email,
-                    "selected_majors": [_MAJOR_LABEL.get(c, c) for c in emp.selected_majors],
-                    "start_time": _format_time_12h(emp.start_time),
-                    "end_time": _format_time_12h(emp.end_time),
-                    "max_resumes": emp.max_resumes,
-                    "slots": slots,
-                }
-            )
+        results = cached_value(roster_key, _roster_payload)
         return Response(results, status=status.HTTP_200_OK)
 
 
@@ -259,14 +314,7 @@ class ResumeReviewSettingsView(APIView):
         return [AllowAny()]
 
     def get(self, request):
-        settings = ResumeReviewSettings.current()
-        return Response(
-            {
-                "employer_page_open": settings.employer_page_open,
-                "student_page_open": settings.student_page_open,
-            },
-            status=status.HTTP_200_OK,
-        )
+        return Response(page_flags(), status=status.HTTP_200_OK)
 
     def patch(self, request):
         settings = ResumeReviewSettings.current()
@@ -299,7 +347,7 @@ class StudentViewSet(APIView):
     )
 
     def post(self, request):
-        if not ResumeReviewSettings.current().student_page_open:
+        if not page_flags()["student_page_open"]:
             return Response({"detail": "Student registration is closed."}, status=status.HTTP_404_NOT_FOUND)
         try:
             full_name = request.data.get("full_name")
@@ -417,29 +465,13 @@ class TimeslotViewSet(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        if not ResumeReviewSettings.current().student_page_open:
+        if not page_flags()["student_page_open"]:
             return Response({"detail": "Student registration is closed."}, status=status.HTTP_404_NOT_FOUND)
         major = request.query_params.get("major")
         time_params = request.query_params.getlist("time")
-        times_filter = _parse_time_params(time_params)
-
-
-
-        employers = Employer.objects.all()
-        if major:
-            employers = employers.filter(selected_majors__contains=major)
-        
-        results = []
-        for employer in employers:
-            employer_timeslots = Timeslot.objects.filter(employer=employer, student__isnull=True).all()
-            slots = _slots_for_employer(employer_timeslots, times_filter) if employer_timeslots else []
-            if slots:
-                results.append({
-                    "id": employer.id,
-                    "full_name": employer.full_name,
-                    "company_name": employer.company_name,
-                    "timeslots": slots,
-                })
-
-
+        full_path = request.get_full_path()
+        results = cached_value(
+            lambda: timeslots_key(full_path),
+            lambda: _timeslot_payload(major, time_params),
+        )
         return Response(results, status=status.HTTP_200_OK)

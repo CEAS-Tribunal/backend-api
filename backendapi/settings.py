@@ -4,6 +4,7 @@ Django settings for backendapi project.
 
 from pathlib import Path
 import os
+import sys
 from urllib.parse import parse_qsl, unquote, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
@@ -164,30 +165,42 @@ LOGGING = {
     },
 }
 
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+# Set only by docker-compose.yml and docker-compose.prod.yml.
+_redis_url = (os.getenv("REDIS_URL") or "").strip()
+if os.getenv("USE_REDIS_CACHE") == "1" and _redis_url:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": _redis_url,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            },
+        }
     }
-}
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
+
+# Tests must not read or write the dev Redis cache.
+if "test" in sys.argv:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "tribunal-tests",
+        }
+    }
 
 
 
 WSGI_APPLICATION = 'backendapi.wsgi.application'
 
 
-def _merge_pg_options(options: dict, host: str = "") -> dict:
-    """
-    For non-pooler Postgres, set search_path=public when needed after odd restores.
-
-    Neon's *pooled* endpoint rejects startup option search_path — use a direct host
-    for migrate or omit this on -pooler hosts.
-    https://neon.tech/docs/connect/connection-errors#unsupported-startup-parameter
-    """
+def _merge_pg_options(options: dict) -> dict:
+    """Set search_path=public when the connection options do not already set it."""
     out = dict(options)
-    host_l = (host or "").lower()
-    is_neon_pooler = "-pooler" in host_l
-    if is_neon_pooler:
-        return out
     existing = (out.get("options") or "").strip()
     if "search_path" not in existing:
         suffix = "-c search_path=public,pg_catalog"
@@ -196,14 +209,11 @@ def _merge_pg_options(options: dict, host: str = "") -> dict:
 
 
 def _database_from_url(url: str) -> dict:
-    """Parse a PostgreSQL URI (e.g. Neon) into Django DATABASES['default']."""
+    """Parse a PostgreSQL URI into Django DATABASES['default']."""
     tmp = urlparse(url)
     name = (tmp.path or "").lstrip("/") or "postgres"
     host = tmp.hostname or ""
-    options = _merge_pg_options(
-        dict(parse_qsl(tmp.query, keep_blank_values=True)),
-        host=host,
-    )
+    options = _merge_pg_options(dict(parse_qsl(tmp.query, keep_blank_values=True)))
     return {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": name,
@@ -248,7 +258,7 @@ else:
             "PASSWORD": _db_pass or None,
             "HOST": _host or None,
             "PORT": _port or None,
-            "OPTIONS": _merge_pg_options({}, host=_host),
+            "OPTIONS": _merge_pg_options({}),
         },
     }
 
