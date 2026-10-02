@@ -14,14 +14,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from dashboard.permissions import IsStaffUser
 
-from .cache import (
-    cache_versions,
-    cached_value,
-    employer_list_key,
-    page_flags,
-    roster_key,
-    timeslots_key,
-)
+from .cache import EMPLOYERS, ROSTER, cached, cached_timeslots, page_flags
 from .emailing import send_student_resume_review_confirmation
 from .models import Employer, ResumeReviewSettings, Student, Timeslot, MAJOR_CHOICES
 
@@ -148,7 +141,7 @@ class EmployerViewSet(APIView):
         """Public list of registered employers with available slot counts."""
         if not page_flags()["employer_page_open"]:
             return Response({"detail": "Employer registration is closed."}, status=status.HTTP_404_NOT_FOUND)
-        results = cached_value(employer_list_key, _employer_list_payload)
+        results = cached(EMPLOYERS, _employer_list_payload)
         return Response(results, status=status.HTTP_200_OK)
 
     def post(self, request):
@@ -216,15 +209,6 @@ class EmployerViewSet(APIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class ResumeReviewCacheVersionView(APIView):
-    """Current cache versions. Reads Redis only, so the client can detect invalidation."""
-
-    permission_classes = [AllowAny]
-
-    def get(self, request):
-        return Response(cache_versions(), status=status.HTTP_200_OK)
-
-
 class AdminResumeRosterView(APIView):
     """Staff-only roster of all RRD employers, timeslots, and assigned students."""
 
@@ -232,7 +216,7 @@ class AdminResumeRosterView(APIView):
 
 
     def get(self, request):
-        results = cached_value(roster_key, _roster_payload)
+        results = cached(ROSTER, _roster_payload)
         return Response(results, status=status.HTTP_200_OK)
 
 
@@ -470,8 +454,8 @@ class TimeslotViewSet(APIView):
         major = request.query_params.get("major")
         time_params = request.query_params.getlist("time")
         full_path = request.get_full_path()
-        results = cached_value(
-            lambda: timeslots_key(full_path),
+        results = cached_timeslots(
+            full_path,
             lambda: _timeslot_payload(major, time_params),
         )
         return Response(results, status=status.HTTP_200_OK)

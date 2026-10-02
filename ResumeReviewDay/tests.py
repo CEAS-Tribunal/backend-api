@@ -725,26 +725,6 @@ class ResumeReviewCacheTests(TestCase):
         refreshed = self.client.get("/api/resume-review-day/timeslots/")
         self.assertEqual(refreshed.data, [])
 
-    def test_cache_version_changes_only_for_the_data_that_changed(self):
-        before = self.client.get("/api/resume-review-day/cache-version/")
-        self.assertEqual(before.status_code, status.HTTP_200_OK)
-
-        self.employer.company_name = "Changed Co"
-        self.employer.save()
-        after_data = self.client.get("/api/resume-review-day/cache-version/")
-        self.assertGreater(after_data.data["data_version"], before.data["data_version"])
-        self.assertEqual(after_data.data["settings_version"], before.data["settings_version"])
-
-        settings = ResumeReviewSettings.current()
-        settings.employer_page_open = False
-        settings.save(update_fields=["employer_page_open"])
-        after_settings = self.client.get("/api/resume-review-day/cache-version/")
-        self.assertEqual(after_settings.data["data_version"], after_data.data["data_version"])
-        self.assertGreater(
-            after_settings.data["settings_version"],
-            after_data.data["settings_version"],
-        )
-
     def test_roster_cache_updates_when_a_student_is_assigned(self):
         self._staff_client()
         before = self.client.get("/api/resume-review-day/roster/")

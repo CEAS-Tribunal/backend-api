@@ -166,25 +166,17 @@ LOGGING = {
 }
 
 # Set only by docker-compose.yml and docker-compose.prod.yml.
-_redis_url = (os.getenv("REDIS_URL") or "").strip()
-if os.getenv("USE_REDIS_CACHE") == "1" and _redis_url:
-    CACHES = {
-        "default": {
-            "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": _redis_url,
-            "OPTIONS": {
-                "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            },
-        }
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": os.getenv("REDIS_URL"),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
     }
-else:
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        }
-    }
+}
 
-# Tests must not read or write the dev Redis cache.
+
 if "test" in sys.argv:
     CACHES = {
         "default": {
@@ -194,9 +186,7 @@ if "test" in sys.argv:
     }
 
 
-
 WSGI_APPLICATION = 'backendapi.wsgi.application'
-
 
 def _merge_pg_options(options: dict) -> dict:
     """Set search_path=public when the connection options do not already set it."""
