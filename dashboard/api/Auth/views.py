@@ -10,6 +10,10 @@ from dashboard.permissions import user_is_org_funding_chair, user_is_treasurer
 
 from .serializers import ChangePasswordSerializer
 
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
+from django.views.decorators.vary import vary_on_cookie
+
 
 class AuthMeView(APIView):
     """
@@ -17,7 +21,8 @@ class AuthMeView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
-
+    @method_decorator(cache_page(60 * 60 * 24, key_prefix='auth_me'))
+    @method_decorator(vary_on_cookie)
     def get(self, request):
         user = request.user
         try:

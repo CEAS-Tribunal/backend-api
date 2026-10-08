@@ -4,6 +4,7 @@ Django settings for backendapi project.
 
 from pathlib import Path
 import os
+import sys
 from urllib.parse import parse_qsl, unquote, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
@@ -164,23 +165,32 @@ LOGGING = {
     },
 }
 
+# Set only by docker-compose.yml and docker-compose.prod.yml.
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": os.getenv("REDIS_URL"),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+    }
+}
+
+
+if "test" in sys.argv:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "tribunal-tests",
+        }
+    }
+
 
 WSGI_APPLICATION = 'backendapi.wsgi.application'
 
-
-def _merge_pg_options(options: dict, host: str = "") -> dict:
-    """
-    For non-pooler Postgres, set search_path=public when needed after odd restores.
-
-    Neon's *pooled* endpoint rejects startup option search_path — use a direct host
-    for migrate or omit this on -pooler hosts.
-    https://neon.tech/docs/connect/connection-errors#unsupported-startup-parameter
-    """
+def _merge_pg_options(options: dict) -> dict:
+    """Set search_path=public when the connection options do not already set it."""
     out = dict(options)
-    host_l = (host or "").lower()
-    is_neon_pooler = "-pooler" in host_l
-    if is_neon_pooler:
-        return out
     existing = (out.get("options") or "").strip()
     if "search_path" not in existing:
         suffix = "-c search_path=public,pg_catalog"
@@ -189,14 +199,11 @@ def _merge_pg_options(options: dict, host: str = "") -> dict:
 
 
 def _database_from_url(url: str) -> dict:
-    """Parse a PostgreSQL URI (e.g. Neon) into Django DATABASES['default']."""
+    """Parse a PostgreSQL URI into Django DATABASES['default']."""
     tmp = urlparse(url)
     name = (tmp.path or "").lstrip("/") or "postgres"
     host = tmp.hostname or ""
-    options = _merge_pg_options(
-        dict(parse_qsl(tmp.query, keep_blank_values=True)),
-        host=host,
-    )
+    options = _merge_pg_options(dict(parse_qsl(tmp.query, keep_blank_values=True)))
     return {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": name,
@@ -241,7 +248,7 @@ else:
             "PASSWORD": _db_pass or None,
             "HOST": _host or None,
             "PORT": _port or None,
-            "OPTIONS": _merge_pg_options({}, host=_host),
+            "OPTIONS": _merge_pg_options({}),
         },
     }
 

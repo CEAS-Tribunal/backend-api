@@ -5,6 +5,7 @@ import zipfile
 from pathlib import Path
 
 from django.db import IntegrityError
+from django.db.models import Count, Prefetch, Q
 from django.http import HttpResponse
 from rest_framework.views import APIView 
 from rest_framework.response import Response
@@ -13,6 +14,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from dashboard.permissions import IsStaffUser
 
+from .cache import EMPLOYERS, ROSTER, cached, cached_timeslots, page_flags
 from .emailing import send_student_resume_review_confirmation
 from .models import Employer, ResumeReviewSettings, Student, Timeslot, MAJOR_CHOICES
 
@@ -22,6 +24,101 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 _MAJOR_LABEL = dict(MAJOR_CHOICES)
+
+
+def _employer_list_payload():
+    employers = (
+        Employer.objects.annotate(
+            available_slots=Count(
+                "timeslot",
+                filter=Q(timeslot__student__isnull=True),
+            )
+        )
+        .order_by("company_name")
+    )
+    results = []
+    for emp in employers:
+        labels = [_MAJOR_LABEL.get(code, code) for code in emp.selected_majors]
+        results.append(
+            {
+                "id": emp.id,
+                "full_name": emp.full_name,
+                "company_name": emp.company_name,
+                "selected_majors": labels,
+                "available_slots": emp.available_slots,
+            }
+        )
+    return results
+
+
+def _roster_payload():
+    employers = (
+        Employer.objects.prefetch_related("timeslot_set", "timeslot_set__student")
+        .all()
+        .order_by("company_name")
+    )
+    results = []
+    for emp in employers:
+        slots = []
+        for slot in emp.timeslot_set.all().order_by("timeslot"):
+            student = slot.student
+            slots.append(
+                {
+                    "slot_id": slot.id,
+                    "time": _format_time_12h(slot.timeslot),
+                    "student": (
+                        {
+                            "id": student.id,
+                            "full_name": student.full_name,
+                            "email": student.email,
+                            "major": _MAJOR_LABEL.get(student.major, student.major),
+                            "grad_year": student.grad_year,
+                        }
+                        if student
+                        else None
+                    ),
+                }
+            )
+        results.append(
+            {
+                "id": emp.id,
+                "full_name": emp.full_name,
+                "company_name": emp.company_name,
+                "email": emp.email,
+                "selected_majors": [_MAJOR_LABEL.get(c, c) for c in emp.selected_majors],
+                "start_time": _format_time_12h(emp.start_time),
+                "end_time": _format_time_12h(emp.end_time),
+                "max_resumes": emp.max_resumes,
+                "slots": slots,
+            }
+        )
+    return results
+
+
+def _timeslot_payload(major, time_params):
+    times_filter = _parse_time_params(time_params)
+    open_slots = Timeslot.objects.filter(student__isnull=True).order_by("timeslot")
+    employers = Employer.objects.all()
+    if major:
+        employers = employers.filter(selected_majors__contains=major)
+    employers = employers.prefetch_related(
+        Prefetch("timeslot_set", queryset=open_slots, to_attr="open_slots")
+    )
+
+    results = []
+    for employer in employers:
+        slots = _slots_for_employer(employer.open_slots, times_filter)
+        if slots:
+            results.append(
+                {
+                    "id": employer.id,
+                    "full_name": employer.full_name,
+                    "company_name": employer.company_name,
+                    "timeslots": slots,
+                }
+            )
+    return results
+
 
 
 def _format_time_12h(t):
@@ -42,26 +139,13 @@ class EmployerViewSet(APIView):
 
     def get(self, request):
         """Public list of registered employers with available slot counts."""
-        if not ResumeReviewSettings.current().employer_page_open:
+        if not page_flags()["employer_page_open"]:
             return Response({"detail": "Employer registration is closed."}, status=status.HTTP_404_NOT_FOUND)
-        employers = Employer.objects.all().order_by("company_name")
-        results = []
-        for emp in employers:
-            available = Timeslot.objects.filter(employer=emp, student__isnull=True).count()
-            labels = [_MAJOR_LABEL.get(code, code) for code in emp.selected_majors]
-            results.append(
-                {
-                    "id": emp.id,
-                    "full_name": emp.full_name,
-                    "company_name": emp.company_name,
-                    "selected_majors": labels,
-                    "available_slots": available,
-                }
-            )
+        results = cached(EMPLOYERS, _employer_list_payload)
         return Response(results, status=status.HTTP_200_OK)
 
     def post(self, request):
-        if not ResumeReviewSettings.current().employer_page_open:
+        if not page_flags()["employer_page_open"]:
             return Response({"detail": "Employer registration is closed."}, status=status.HTTP_404_NOT_FOUND)
         try:
             full_name = request.data.get("full_name")
@@ -130,47 +214,9 @@ class AdminResumeRosterView(APIView):
 
     permission_classes = [IsAuthenticated, IsStaffUser]
 
+
     def get(self, request):
-        employers = (
-            Employer.objects.prefetch_related("timeslot_set", "timeslot_set__student")
-            .all()
-            .order_by("company_name")
-        )
-        results = []
-        for emp in employers:
-            slots = []
-            for slot in emp.timeslot_set.all().order_by("timeslot"):
-                student = slot.student
-                slots.append(
-                    {
-                        "slot_id": slot.id,
-                        "time": _format_time_12h(slot.timeslot),
-                        "student": (
-                            {
-                                "id": student.id,
-                                "full_name": student.full_name,
-                                "email": student.email,
-                                "major": _MAJOR_LABEL.get(student.major, student.major),
-                                "grad_year": student.grad_year,
-                            }
-                            if student
-                            else None
-                        ),
-                    }
-                )
-            results.append(
-                {
-                    "id": emp.id,
-                    "full_name": emp.full_name,
-                    "company_name": emp.company_name,
-                    "email": emp.email,
-                    "selected_majors": [_MAJOR_LABEL.get(c, c) for c in emp.selected_majors],
-                    "start_time": _format_time_12h(emp.start_time),
-                    "end_time": _format_time_12h(emp.end_time),
-                    "max_resumes": emp.max_resumes,
-                    "slots": slots,
-                }
-            )
+        results = cached(ROSTER, _roster_payload)
         return Response(results, status=status.HTTP_200_OK)
 
 
@@ -252,14 +298,7 @@ class ResumeReviewSettingsView(APIView):
         return [AllowAny()]
 
     def get(self, request):
-        settings = ResumeReviewSettings.current()
-        return Response(
-            {
-                "employer_page_open": settings.employer_page_open,
-                "student_page_open": settings.student_page_open,
-            },
-            status=status.HTTP_200_OK,
-        )
+        return Response(page_flags(), status=status.HTTP_200_OK)
 
     def patch(self, request):
         settings = ResumeReviewSettings.current()
@@ -292,7 +331,7 @@ class StudentViewSet(APIView):
     )
 
     def post(self, request):
-        if not ResumeReviewSettings.current().student_page_open:
+        if not page_flags()["student_page_open"]:
             return Response({"detail": "Student registration is closed."}, status=status.HTTP_404_NOT_FOUND)
         try:
             full_name = request.data.get("full_name")
@@ -410,29 +449,13 @@ class TimeslotViewSet(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        if not ResumeReviewSettings.current().student_page_open:
+        if not page_flags()["student_page_open"]:
             return Response({"detail": "Student registration is closed."}, status=status.HTTP_404_NOT_FOUND)
         major = request.query_params.get("major")
         time_params = request.query_params.getlist("time")
-        times_filter = _parse_time_params(time_params)
-
-
-
-        employers = Employer.objects.all()
-        if major:
-            employers = employers.filter(selected_majors__contains=major)
-        
-        results = []
-        for employer in employers:
-            employer_timeslots = Timeslot.objects.filter(employer=employer, student__isnull=True).all()
-            slots = _slots_for_employer(employer_timeslots, times_filter) if employer_timeslots else []
-            if slots:
-                results.append({
-                    "id": employer.id,
-                    "full_name": employer.full_name,
-                    "company_name": employer.company_name,
-                    "timeslots": slots,
-                })
-
-
+        full_path = request.get_full_path()
+        results = cached_timeslots(
+            full_path,
+            lambda: _timeslot_payload(major, time_params),
+        )
         return Response(results, status=status.HTTP_200_OK)

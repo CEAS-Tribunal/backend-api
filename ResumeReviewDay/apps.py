@@ -3,3 +3,6 @@ from django.apps import AppConfig
 class ResumereviewdayConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'ResumeReviewDay'
+    
+    def ready(self):
+        import ResumeReviewDay.signals

@@ -8,6 +8,9 @@ from dashboard.models import ExecRole
 from dashboard.api.ExecMember.serializers import ExecMemberSerializer
 from .serializers import ExecRoleSerializer
 
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
+
 
 class ExecRoleView(GenericAPIView):
     serializer_class = ExecRoleSerializer
@@ -18,6 +21,7 @@ class ExecRoleView(GenericAPIView):
             return [AllowAny()]
         return [IsAuthenticated(), IsStaffUser()]
 
+    @method_decorator(cache_page(60 * 60 * 24, key_prefix='exec_role') )
     def get(self, request):
         include_members = request.query_params.get("include_members", "").lower() in ("true", "1", "yes")
         sections = [

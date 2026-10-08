@@ -4,6 +4,7 @@ import zipfile
 
 from django.contrib.auth.models import User
 from django.core import mail
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework import status
@@ -12,6 +13,19 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import Employer, ResumeReviewSettings, Student, Timeslot
 from .views import StudentViewSet
+
+# The database rolls back between tests. The cache does not, so a closed
+# registration page or employer list from one test would leak into the next.
+_original_pre_setup = TestCase._pre_setup.__func__
+
+
+@classmethod
+def _pre_setup_clear_cache(cls):
+    _original_pre_setup(cls)
+    cache.clear()
+
+
+TestCase._pre_setup = _pre_setup_clear_cache
 
 
 def _make_employer(**overrides):
@@ -640,3 +654,101 @@ class ResumeReviewSettingsViewTests(TestCase):
             self.client.get("/api/resume-review-day/timeslots/").status_code,
             status.HTTP_404_NOT_FOUND,
         )
+
+
+LOCMEM_CACHE = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "resume-review-day-tests",
+    }
+}
+
+
+@override_settings(
+    ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"],
+    CACHES=LOCMEM_CACHE,
+)
+class ResumeReviewCacheTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.employer = _make_employer()
+
+    def _staff_client(self):
+        user = User.objects.create_user(username="rrd-cache-staff", password="pass12345")
+        user.is_staff = True
+        user.save(update_fields=["is_staff"])
+        token = str(RefreshToken.for_user(user).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def test_employer_list_stays_cached_until_a_slot_changes(self):
+        from unittest.mock import patch
+
+        first = self.client.get("/api/resume-review-day/employer/")
+        self.assertEqual(first.data[0]["available_slots"], 6)
+
+        with patch("ResumeReviewDay.views._employer_list_payload") as builder:
+            cached = self.client.get("/api/resume-review-day/employer/")
+            builder.assert_not_called()
+        self.assertEqual(cached.data[0]["available_slots"], 6)
+
+        slot = Timeslot.objects.filter(employer=self.employer).first()
+        slot.student = _make_student()
+        slot.save()
+
+        refreshed = self.client.get("/api/resume-review-day/employer/")
+        self.assertEqual(refreshed.data[0]["available_slots"], 5)
+
+    def test_timeslot_filters_are_cached_separately(self):
+        _make_employer(
+            full_name="Mech Employer",
+            company_name="Mech Co",
+            email="mech-cache@co.test",
+            selected_majors=["mech"],
+        )
+        cs = self.client.get("/api/resume-review-day/timeslots/?major=cs")
+        mech = self.client.get("/api/resume-review-day/timeslots/?major=mech")
+        cs_again = self.client.get("/api/resume-review-day/timeslots/?major=cs")
+
+        self.assertEqual(cs.data, cs_again.data)
+        self.assertEqual({item["id"] for item in cs.data}, {self.employer.id})
+        self.assertNotEqual(
+            {item["id"] for item in cs.data},
+            {item["id"] for item in mech.data},
+        )
+
+    def test_taken_slot_drops_out_of_cached_timeslots(self):
+        self.client.get("/api/resume-review-day/timeslots/")
+        for slot in Timeslot.objects.filter(employer=self.employer):
+            slot.student = _make_student(email=f"{slot.id}@uc.test")
+            slot.save()
+
+        refreshed = self.client.get("/api/resume-review-day/timeslots/")
+        self.assertEqual(refreshed.data, [])
+
+    def test_roster_cache_updates_when_a_student_is_assigned(self):
+        self._staff_client()
+        before = self.client.get("/api/resume-review-day/roster/")
+        self.assertIsNone(before.data[0]["slots"][0]["student"])
+
+        slot = Timeslot.objects.filter(employer=self.employer).order_by("timeslot").first()
+        slot.student = _make_student()
+        slot.save()
+
+        after = self.client.get("/api/resume-review-day/roster/")
+        self.assertEqual(after.data[0]["slots"][0]["student"]["full_name"], "Alice Brown")
+
+    def test_closing_employer_page_bypasses_cached_list(self):
+        self.client.get("/api/resume-review-day/employer/")
+        settings = ResumeReviewSettings.current()
+        settings.employer_page_open = False
+        settings.save(update_fields=["employer_page_open"])
+
+        closed = self.client.get("/api/resume-review-day/employer/")
+        self.assertEqual(closed.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_deleting_an_employer_clears_the_cached_list(self):
+        self.client.get("/api/resume-review-day/employer/")
+        self.employer.delete()
+        refreshed = self.client.get("/api/resume-review-day/employer/")
+        self.assertEqual(refreshed.status_code, status.HTTP_200_OK)
+        self.assertEqual(refreshed.data, [])

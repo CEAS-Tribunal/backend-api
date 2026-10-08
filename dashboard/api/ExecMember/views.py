@@ -7,6 +7,9 @@ from dashboard.permissions import IsStaffUser
 from dashboard.models import ExecMember, ExecRole
 from .serializers import ExecMemberSerializer
 
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
+
 
 class ExecMemberView(GenericAPIView):
     serializer_class = ExecMemberSerializer
@@ -17,6 +20,7 @@ class ExecMemberView(GenericAPIView):
             return [AllowAny()]
         return [IsAuthenticated(), IsStaffUser()]
 
+    @method_decorator(cache_page(60 * 60 * 24, key_prefix='exec_member'))
     def get(self, request):
         role_id = request.query_params.get('roleId')
         if not role_id:
