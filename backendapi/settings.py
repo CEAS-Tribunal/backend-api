@@ -122,36 +122,6 @@ TEMPLATES = [
     },
 ]
 
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,  # Keeps Django's internal loggers alive
-    "formatters": {
-        "simple": {
-            "format": "{levelname} {message}",
-            "style": "{",
-        },
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "simple",
-        },
-    },
-    "loggers": {
-        # Catch-all logger for your custom application code
-        "": {
-            "handlers": ["console"],
-            "level": "INFO",
-        },
-        # Internal Django logger
-        "django": {
-            "handlers": ["console"],
-            "level": "INFO",
-            "propagate": False,  # Prevents duplicate logging to the root logger
-        },
-    },
-}
-
 # Set only by docker-compose.yml and docker-compose.prod.yml.
 _redis_url = (os.getenv("REDIS_URL") or "").strip()
 if os.getenv("USE_REDIS_CACHE") == "1" and _redis_url:
