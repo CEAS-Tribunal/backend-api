@@ -39,6 +39,10 @@ RUN DEBUG=0 \
     ALLOWED_HOSTS=localhost,127.0.0.1 \
     python manage.py collectstatic --noinput
 
+# Entrypoint starts as root so it can chown named media/static volumes, then
+# drops to app via runuser before migrate and the server process.
+USER root
+
 EXPOSE 8000
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
