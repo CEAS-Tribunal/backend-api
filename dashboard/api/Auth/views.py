@@ -23,8 +23,10 @@ class AuthMeView(APIView):
         try:
             em = ExecMember.objects.get(user=user)
             must_change = em.must_change_password
+            exec_roles = list(em.execrole_set.values_list("role", flat=True))
         except ExecMember.DoesNotExist:
             must_change = False
+            exec_roles = []
 
         is_exec = ExecMember.objects.filter(user=user).exists()
 
@@ -38,6 +40,7 @@ class AuthMeView(APIView):
                 "is_staff": user.is_staff,
                 "is_superuser": user.is_superuser,
                 "is_exec": is_exec,
+                "exec_roles": exec_roles,
                 "is_treasurer": user_is_treasurer(user),
                 "is_org_funding_chair": user_is_org_funding_chair(user),
             },
