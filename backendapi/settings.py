@@ -64,7 +64,8 @@ INSTALLED_APPS = [
     'reimbursement',
     'career_fair',
     'org_funding',
-    'alumni'
+    'alumni',
+    'expo'
 ]
 
 # drf-spectacular settings
