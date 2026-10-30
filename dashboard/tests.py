@@ -44,7 +44,20 @@ class DashboardAuthAPITests(TestCase):
         self.assertTrue(r.data["is_staff"])
         self.assertFalse(r.data["is_superuser"])
         self.assertTrue(r.data["is_exec"])
+        self.assertEqual(r.data["exec_roles"], [])
         self.assertFalse(r.data["is_treasurer"])
+
+    def test_me_returns_exec_roles(self):
+        role = ExecRole.objects.create(
+            role="Technology Chair",
+            description="Technology",
+            committee="pres",
+        )
+        role.ExecMember.add(self.exec_member)
+        self._auth_headers()
+        r = self.client.get("/dashboard/auth/me/")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["exec_roles"], ["Technology Chair"])
 
     def test_me_is_treasurer_when_exec_has_treasurer_role(self):
         role = ExecRole.objects.create(
