@@ -69,6 +69,7 @@ class JudgeModel(models.Model):
     dietary_restrictions = models.CharField(max_length=255, null=True, blank=True)
 
     judge_pin = models.CharField(max_length=255, null=False, blank=False, editable=False)
+    has_checked_in = models.BooleanField(default=False, null=False, blank=False)
 
     def save(self, *args, **kwargs):
         if not self.judge_pin:
