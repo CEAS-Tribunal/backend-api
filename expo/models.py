@@ -86,6 +86,29 @@ class JudgeModel(models.Model):
 
 class StudentModel(models.Model):
     id = models.CharField(primary_key=True, default=cuid, editable=False, unique=True, db_index=True)
+    team_name = models.CharField(max_length=255, null=False, blank=False)
+    team_category = models.CharField(choices=ProjectCategories, max_length=255, null=False, blank=False)
+    booth_number = models.CharField(max_length=255, null=False, blank=False)
+
+    def __str__(self):
+        return self.team_name
+
+class JudgeAssignmentModel(models.Model):
+    id = models.CharField(primary_key=True, default=cuid, editable=False, unique=True, db_index=True)
+    judge = models.ForeignKey(JudgeModel, on_delete=models.CASCADE, related_name="assignments")
+    student = models.ForeignKey(StudentModel, on_delete=models.CASCADE, related_name="assignments")
+    timeslot = models.CharField(choices=JudgingTimeslots, max_length=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["judge", "timeslot"], name="assignment_judge_slot_uniq"),
+            models.UniqueConstraint(fields=["student", "timeslot"], name="assignment_student_slot_uniq"),
+            models.UniqueConstraint(fields=["judge", "student"], name="assignment_judge_student_uniq"),
+        ]
+
+    def __str__(self):
+        return f"{self.judge} -> {self.student} ({self.get_timeslot_display()})"
 
 class SubmissionModel(models.Model):
     id = models.CharField(primary_key=True, default=cuid, editable=False, unique=True, db_index=True)
