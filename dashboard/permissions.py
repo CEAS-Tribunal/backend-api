@@ -161,6 +161,13 @@ class IsInnovationChallengeDashboardUser(BasePermission):
 
     def has_permission(self, request, view):
         return user_can_view_innovation_challenge_dashboard(request.user)
+class IsEsocChairOrSuperuserStaff(BasePermission):
+    """Allows staff ESOC role holders or superusers to manage ESOC submissions."""
+
+    message = "ESOC access required."
+
+    def has_permission(self, request, view):
+        return user_is_esoc_chair(request.user)
 
 
 class IsStaffUser(BasePermission):
