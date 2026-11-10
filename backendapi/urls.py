@@ -30,6 +30,7 @@ urlpatterns = [
     path('api/career-fair/', include('career_fair.urls'), name='career-fair'),
     path('api/reimbursement/', include('reimbursement.urls'), name='reimbursement'),
     path('api/org-funding/', include('org_funding.urls'), name='org-funding'),
+    path('api/esoc/', include('esoc.urls'), name='esoc'),
      path("api/alumni/", include("alumni.urls"),name='alumni'),
 
     # JWT Authentication endpoints (staff-only issuance; see StaffOnlyTokenObtainPairSerializer)
