@@ -32,6 +32,7 @@ jobs:
       - name: Run Migrations
         env:
           DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
+          CORS_ORIGIN: ${{ vars.CORS_ORIGIN }}
         # uv run automatically detects and uses the local .venv context
         run: uv run python manage.py migrate --noinput
 
