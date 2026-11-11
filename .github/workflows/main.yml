@@ -19,15 +19,19 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          python-version: '3.13'
+          python-version: '3.12'
+
+      - name: Create Virtual Environment
+        # Explicitly spins up a local .venv folder
+        run: uv venv .venv
 
       - name: Install dependencies
-        run: |
-          uv pip install --system -r requirements.txt
+        # Installs packages tightly bounded inside the .venv
+        run: uv pip install -r requirements.txt
 
       - name: Run Migrations
         env:
-          # Use a separate secret for your dev/staging database
           DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
-        run: |
-          python manage.py migrate --noinput
+        # uv run automatically detects and uses the local .venv context
+        run: uv run python manage.py migrate --noinput
+
