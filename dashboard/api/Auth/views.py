@@ -16,7 +16,6 @@ class AuthMeView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
-
     def get(self, request):
         user = request.user
         try:
