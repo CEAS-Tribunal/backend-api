@@ -19,11 +19,11 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          python-version: '3.12'
+          python-version: '3.13'
 
       - name: Create Virtual Environment
         # Explicitly spins up a local .venv folder
-        run: uv venv .venv
+        run: uv venv .venv --clear
 
       - name: Install dependencies
         # Installs packages tightly bounded inside the .venv
