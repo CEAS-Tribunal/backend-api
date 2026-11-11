@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'reimbursement',
     'career_fair',
     'org_funding',
+    'esoc',
     'alumni'
 ]
 
