@@ -1,6 +1,16 @@
+from decimal import Decimal, ROUND_HALF_UP
+from statistics import fmean
+
 from rest_framework import serializers
 
-from .models import InnovationRoom, Judge, JudgingSubmission, Team
+from .models import (
+    InnovationRoom,
+    InnovationRoomConfiguration,
+    Judge,
+    JudgingSubmission,
+    Team,
+    get_innovation_room_configuration,
+)
 
 
 class InnovationRoomField(serializers.ChoiceField):
@@ -8,6 +18,24 @@ class InnovationRoomField(serializers.ChoiceField):
         if isinstance(data, str):
             data = data.strip()
         return super().to_internal_value(data)
+
+
+def validate_room_is_available(value, instance):
+    if (
+        value == InnovationRoom.LINDNER_4210
+        and get_innovation_room_configuration().room_count == 2
+        and (instance is None or instance.room != value)
+    ):
+        raise serializers.ValidationError(
+            "Lindner 4210 is only available when 3 rooms are enabled."
+        )
+    return value
+
+
+class InnovationRoomConfigurationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InnovationRoomConfiguration
+        fields = ["room_count"]
 
 
 class JudgeSerializer(serializers.ModelSerializer):
@@ -27,6 +55,9 @@ class JudgeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A judge with this name already exists.")
         return value
 
+    def validate_room(self, value):
+        return validate_room_is_available(value, self.instance)
+
 
 class TeamSerializer(serializers.ModelSerializer):
     name = serializers.CharField(max_length=160, trim_whitespace=True)
@@ -45,6 +76,9 @@ class TeamSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A team with this name already exists.")
         return value
 
+    def validate_room(self, value):
+        return validate_room_is_available(value, self.instance)
+
 
 RUBRIC_CRITERIA = (
     "presentation-quality",
@@ -57,6 +91,14 @@ RUBRIC_CRITERIA = (
     "qa-effectiveness",
     "overall-rating",
 )
+
+
+def submission_raw_score(scores):
+    return fmean(scores[criterion] for criterion in RUBRIC_CRITERIA)
+
+
+def _round_score(value):
+    return float(Decimal(str(value)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
 
 class JudgingSubmissionSerializer(serializers.ModelSerializer):
@@ -73,6 +115,8 @@ class JudgingSubmissionSerializer(serializers.ModelSerializer):
     judge_name = serializers.CharField(source="judge.name", read_only=True)
     team_name = serializers.CharField(source="team.name", read_only=True)
     room = serializers.CharField(source="team.room", read_only=True)
+    raw_score = serializers.SerializerMethodField()
+    overall_score_correction = serializers.SerializerMethodField()
 
     class Meta:
         model = JudgingSubmission
@@ -84,6 +128,8 @@ class JudgingSubmissionSerializer(serializers.ModelSerializer):
             "team_name",
             "room",
             "scores",
+            "raw_score",
+            "overall_score_correction",
             "feedback",
             "created_at",
             "updated_at",
@@ -93,6 +139,12 @@ class JudgingSubmissionSerializer(serializers.ModelSerializer):
             "scores": {"required": True},
             "feedback": {"required": False, "allow_blank": True},
         }
+
+    def get_overall_score_correction(self, submission):
+        return _round_score(self.context["overall_score_corrections"][submission.id])
+
+    def get_raw_score(self, submission):
+        return _round_score(submission_raw_score(submission.scores))
 
     def validate_scores(self, value):
         if not isinstance(value, dict):

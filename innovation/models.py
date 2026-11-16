@@ -9,6 +9,27 @@ class InnovationRoom(models.TextChoices):
     LINDNER_4210 = "Lindner 4210", "Lindner 4210"
 
 
+class InnovationRoomConfiguration(models.Model):
+    ROOM_COUNT_CHOICES = [
+        (2, "2 rooms"),
+        (3, "3 rooms"),
+    ]
+
+    room_count = models.PositiveSmallIntegerField(
+        choices=ROOM_COUNT_CHOICES,
+        default=2,
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.room_count} judging rooms"
+
+
+def get_innovation_room_configuration():
+    configuration, _ = InnovationRoomConfiguration.objects.get_or_create(pk=1)
+    return configuration
+
+
 class Judge(models.Model):
     name = models.CharField(max_length=120)
     room = models.CharField(max_length=120, choices=InnovationRoom.choices)
