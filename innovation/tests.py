@@ -3,6 +3,8 @@ from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from dashboard.models import ExecMember, ExecRole
+
 from .models import InnovationRoom, Judge, JudgingSubmission, Team
 from .serializers import RUBRIC_CRITERIA
 
@@ -18,6 +20,13 @@ class InnovationJudgingAPITests(TestCase):
         self.staff = User.objects.create_user(username="judge-admin", password="pass12345")
         self.staff.is_staff = True
         self.staff.save(update_fields=["is_staff"])
+        self.exec_member = ExecMember.objects.create(user=self.staff)
+        president_role = ExecRole.objects.create(
+            role="President",
+            description="President",
+            committee="pres",
+        )
+        president_role.ExecMember.add(self.exec_member)
         self.client.force_authenticate(user=self.staff)
         self.judge = Judge.objects.create(name="Alex Smith", room=InnovationRoom.FRONT_OF_KAUTZ_ATTIC)
         self.team = Team.objects.create(name="AeroSense", room=InnovationRoom.FRONT_OF_KAUTZ_ATTIC)
@@ -28,6 +37,10 @@ class InnovationJudgingAPITests(TestCase):
             self.client.get("/api/innovation/judges/").status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
+        self.assertEqual(
+            self.client.get("/api/innovation/room-configuration/").status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
 
         outsider = User.objects.create_user(username="outsider", password="pass12345")
         self.client.force_authenticate(user=outsider)
@@ -36,7 +49,58 @@ class InnovationJudgingAPITests(TestCase):
             status.HTTP_403_FORBIDDEN,
         )
 
-    def test_rooms_endpoint_returns_the_static_room_choices(self):
+    def test_only_approved_staff_roles_can_read_results(self):
+        unauthorized_staff = User.objects.create_user(
+            username="staff-without-dashboard-role",
+            password="pass12345",
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=unauthorized_staff)
+        self.assertEqual(
+            self.client.get("/api/innovation/results/").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+        superuser = User.objects.create_superuser(
+            username="unassigned-superuser",
+            email="superuser@example.com",
+            password="pass12345",
+        )
+        self.client.force_authenticate(user=superuser)
+        self.assertEqual(
+            self.client.get("/api/innovation/results/").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+    def test_each_approved_staff_role_can_read_results(self):
+        for index, role_name in enumerate(
+            (
+                "Innovation Challenge Chair",
+                "Technology Chair",
+                "Chief of Staff",
+                "President",
+            )
+        ):
+            with self.subTest(role=role_name):
+                user = User.objects.create_user(
+                    username=f"approved-dashboard-role-{index}",
+                    password="pass12345",
+                    is_staff=True,
+                )
+                member = ExecMember.objects.create(user=user)
+                role = ExecRole.objects.create(
+                    role=role_name,
+                    description=role_name,
+                    committee="pres",
+                )
+                role.ExecMember.add(member)
+                self.client.force_authenticate(user=user)
+                self.assertEqual(
+                    self.client.get("/api/innovation/results/").status_code,
+                    status.HTTP_200_OK,
+                )
+
+    def test_rooms_endpoint_returns_rooms_for_the_saved_room_count(self):
         response = self.client.get("/api/innovation/rooms/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -44,7 +108,97 @@ class InnovationJudgingAPITests(TestCase):
             response.data,
             [
                 {"value": room.value, "label": room.label}
+                for room in (
+                    InnovationRoom.FRONT_OF_KAUTZ_ATTIC,
+                    InnovationRoom.BACK_OF_KAUTZ_ATTIC,
+                )
+            ],
+        )
+
+        configuration = self.client.get("/api/innovation/room-configuration/")
+        self.assertEqual(configuration.status_code, status.HTTP_200_OK)
+        self.assertEqual(configuration.data, {"room_count": 2})
+
+        updated_configuration = self.client.patch(
+            "/api/innovation/room-configuration/",
+            {"room_count": 3},
+            format="json",
+        )
+        self.assertEqual(updated_configuration.status_code, status.HTTP_200_OK)
+        self.assertEqual(updated_configuration.data, {"room_count": 3})
+        self.assertEqual(
+            self.client.get("/api/innovation/rooms/").data,
+            [
+                {"value": room.value, "label": room.label}
                 for room in InnovationRoom
+            ],
+        )
+
+    def test_two_room_mode_retains_existing_lindner_assignments(self):
+        self.client.patch(
+            "/api/innovation/room-configuration/",
+            {"room_count": 3},
+            format="json",
+        )
+        lindner_judge = self.client.post(
+            "/api/innovation/judges/",
+            {"name": "Lindner Judge", "room": InnovationRoom.LINDNER_4210},
+            format="json",
+        )
+        lindner_team = self.client.post(
+            "/api/innovation/teams/",
+            {"name": "Lindner Team", "room": InnovationRoom.LINDNER_4210},
+            format="json",
+        )
+        self.assertEqual(lindner_judge.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(lindner_team.status_code, status.HTTP_201_CREATED)
+
+        self.client.patch(
+            "/api/innovation/room-configuration/",
+            {"room_count": 2},
+            format="json",
+        )
+
+        self.assertEqual(
+            self.client.post(
+                "/api/innovation/judges/",
+                {"name": "New Lindner Judge", "room": InnovationRoom.LINDNER_4210},
+                format="json",
+            ).status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertEqual(
+            self.client.post(
+                "/api/innovation/teams/",
+                {"name": "New Lindner Team", "room": InnovationRoom.LINDNER_4210},
+                format="json",
+            ).status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertEqual(
+            self.client.patch(
+                f"/api/innovation/judges/{self.judge.id}/",
+                {"room": InnovationRoom.LINDNER_4210},
+                format="json",
+            ).status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertEqual(
+            self.client.patch(
+                f"/api/innovation/judges/{lindner_judge.data['id']}/",
+                {"name": "Retained Lindner Judge", "room": InnovationRoom.LINDNER_4210},
+                format="json",
+            ).status_code,
+            status.HTTP_200_OK,
+        )
+        self.assertEqual(lindner_team.data["room"], InnovationRoom.LINDNER_4210)
+        self.assertEqual(Judge.objects.get(pk=lindner_judge.data["id"]).room, InnovationRoom.LINDNER_4210)
+        self.assertEqual(Team.objects.get(pk=lindner_team.data["id"]).room, InnovationRoom.LINDNER_4210)
+        self.assertEqual(
+            [room["value"] for room in self.client.get("/api/innovation/rooms/").data],
+            [
+                InnovationRoom.FRONT_OF_KAUTZ_ATTIC,
+                InnovationRoom.BACK_OF_KAUTZ_ATTIC,
             ],
         )
 
@@ -68,6 +222,11 @@ class InnovationJudgingAPITests(TestCase):
         self.assertEqual(team_response.data["room"], InnovationRoom.BACK_OF_KAUTZ_ATTIC)
         team_id = team_response.data["id"]
 
+        self.client.patch(
+            "/api/innovation/room-configuration/",
+            {"room_count": 3},
+            format="json",
+        )
         self.assertEqual(
             self.client.patch(
                 f"/api/innovation/judges/{judge_id}/",
@@ -265,6 +424,45 @@ class InnovationJudgingAPITests(TestCase):
         self.assertEqual(len(filtered.data), 1)
         self.assertEqual(filtered.data[0]["team_id"], self.team.id)
 
+    def test_raw_scores_average_every_criterion_per_judge_and_team(self):
+        second_judge = Judge.objects.create(
+            name="Taylor Jones",
+            room=InnovationRoom.BACK_OF_KAUTZ_ATTIC,
+        )
+        first_scores = _scores(5)
+        first_scores["overall-rating"] = 10
+        second_scores = _scores(8)
+        second_scores["overall-rating"] = 1
+        JudgingSubmission.objects.create(
+            judge=self.judge,
+            team=self.team,
+            scores=first_scores,
+        )
+        JudgingSubmission.objects.create(
+            judge=second_judge,
+            team=self.team,
+            scores=second_scores,
+        )
+
+        submissions = self.client.get("/api/innovation/submissions/").data
+        raw_scores_by_judge = {
+            submission["judge_name"]: submission["raw_score"]
+            for submission in submissions
+        }
+        self.assertEqual(raw_scores_by_judge["Alex Smith"], 5.6)
+        self.assertEqual(raw_scores_by_judge["Taylor Jones"], 7.2)
+        self.assertTrue(
+            all(
+                submission["overall_score_correction"] == 0.0
+                for submission in submissions
+            )
+        )
+
+        results = self.client.get("/api/innovation/results/").data
+        self.assertEqual(results[0]["average_score"], 6.4)
+        self.assertEqual(results[0]["average_z_score"], 0.0)
+        self.assertEqual(results[0]["average_corrected_score"], 6.4)
+
     def test_results_z_score_corrects_for_judge_severity(self):
         lenient_judge = Judge.objects.create(name="Lenient Judge", room=InnovationRoom.FRONT_OF_KAUTZ_ATTIC)
         harsh_judge = Judge.objects.create(name="Harsh Judge", room=InnovationRoom.FRONT_OF_KAUTZ_ATTIC)
@@ -305,6 +503,26 @@ class InnovationJudgingAPITests(TestCase):
         self.assertEqual(results["Team C"]["average_score"], 10.0)
         self.assertEqual(results["Team C"]["average_z_score"], 1.0)
         self.assertEqual(results["Team C"]["average_corrected_score"], 9.5)
+
+        submissions = self.client.get("/api/innovation/submissions/").data
+        corrections = {
+            (submission["team_name"], submission["judge_name"]): submission[
+                "overall_score_correction"
+            ]
+            for submission in submissions
+        }
+        self.assertAlmostEqual(
+            corrections[("Team A", "Harsh Judge")], 0.5
+        )
+        self.assertAlmostEqual(
+            corrections[("Team B", "Harsh Judge")], 4.5
+        )
+        self.assertAlmostEqual(
+            corrections[("Team B", "Lenient Judge")], -4.5
+        )
+        self.assertAlmostEqual(
+            corrections[("Team C", "Lenient Judge")], -0.5
+        )
 
     def test_results_fall_back_to_raw_ratings_without_judge_variance(self):
         second_judge = Judge.objects.create(name="Second Judge", room=InnovationRoom.BACK_OF_KAUTZ_ATTIC)

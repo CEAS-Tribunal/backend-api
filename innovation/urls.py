@@ -4,6 +4,7 @@ from .views import (
     JudgeDetailView,
     JudgeListCreateView,
     ResultsListView,
+    RoomConfigurationView,
     RoomListView,
     SubmissionDetailView,
     SubmissionListCreateView,
@@ -13,6 +14,11 @@ from .views import (
 
 urlpatterns = [
     path("rooms/", RoomListView.as_view(), name="innovation-rooms"),
+    path(
+        "room-configuration/",
+        RoomConfigurationView.as_view(),
+        name="innovation-room-configuration",
+    ),
     path("judges/", JudgeListCreateView.as_view(), name="innovation-judges"),
     path("judges/<int:pk>/", JudgeDetailView.as_view(), name="innovation-judge-detail"),
     path("teams/", TeamListCreateView.as_view(), name="innovation-teams"),
