@@ -67,7 +67,6 @@ INSTALLED_APPS = [
     'alumni',
     'innovation',
     'esoc',
-    'alumni'
 ]
 
 # drf-spectacular settings
