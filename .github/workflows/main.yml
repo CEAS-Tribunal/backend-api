@@ -1,0 +1,38 @@
+name: Dev Database Migration
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - dev
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: '3.13'
+
+      - name: Create Virtual Environment
+        # Explicitly spins up a local .venv folder
+        run: uv venv .venv --clear
+
+      - name: Install dependencies
+        # Installs packages tightly bounded inside the .venv
+        run: uv pip install -r requirements.txt
+
+      - name: Run Migrations
+        env:
+          DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
+          CORS_ORIGIN: ${{ vars.CORS_ORIGIN }}
+        # uv run automatically detects and uses the local .venv context
+        run: uv run python manage.py migrate --noinput
+
