@@ -1,9 +1,14 @@
 from unittest.mock import patch
 
+from django.contrib.auth.models import User
+from django.core import mail
 from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient, APIRequestFactory
 
+from dashboard.models import ExecMember, ExecRole
+
+from .emailing import send_esoc_request_created
 from .models import EsocClub, EsocContact, EsocRequest
 from .serializers import EsocRequestCreateSerializer, EsocRequestSerializer
 
@@ -111,3 +116,45 @@ class EsocRequestCreateTests(TestCase):
         club = request.additional_clubs.get()
         self.assertEqual(club.name, "Robotics Club")
         self.assertEqual(club.contacts.get().email, "jordan@example.com")
+
+
+class EsocNotificationEmailTests(TestCase):
+    def setUp(self):
+        self.request = EsocRequest.objects.create(
+            organization_name="Campus Club",
+            requester_name="Alex Student",
+            requester_email="alex@example.com",
+            m_number="M12345678",
+            position="Treasurer",
+        )
+
+    def _add_member(self, username, email, *roles):
+        user = User.objects.create_user(username=username, email=email)
+        member = ExecMember.objects.create(user=user)
+        for role_name in roles:
+            role = ExecRole.objects.create(
+                role=role_name,
+                description="ESOC testing",
+                committee="pres",
+            )
+            role.ExecMember.add(member)
+        return member
+
+    def test_sends_only_to_members_with_sole_esoc_chair_role(self):
+        self._add_member("chair", "chair@example.com", "  esoc chair ")
+        self._add_member(
+            "multi-role",
+            "multi@example.com",
+            "ESOC Chair",
+            "Treasurer",
+        )
+        self._add_member("other", "other@example.com", "Treasurer")
+
+        self.assertEqual(send_esoc_request_created(self.request), 1)
+        self.assertEqual(mail.outbox[0].to, ["chair@example.com"])
+
+    def test_skips_notification_when_no_matching_member_has_email(self):
+        self._add_member("no-email", "", "ESOC Chair")
+
+        self.assertEqual(send_esoc_request_created(self.request), 0)
+        self.assertEqual(mail.outbox, [])

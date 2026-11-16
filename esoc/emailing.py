@@ -9,14 +9,12 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 
-from dashboard.models import ExecRole
+from dashboard.models import ExecMember
 
 from .models import EsocRequest
 
 logger = logging.getLogger(__name__)
 
-
-ESOC_NOTIFICATION_EMAILS = ["ecos@mail.uc.edu"]
 
 def _clean(s: str | None) -> str:
     return (s or "").strip()
@@ -26,9 +24,18 @@ def _truthy(s: str | None) -> bool:
     return bool(_clean(s))
 
 
-def _is_esoc_role(role_name: str | None) -> bool:
-    name = _clean(role_name).lower()
-    return name == "esoc"
+def _esoc_notification_emails() -> list[str]:
+    members = ExecMember.objects.select_related("user").prefetch_related("execrole_set")
+    emails = []
+    for member in members:
+        roles = list(member.execrole_set.all())
+        if len(roles) != 1 or _clean(roles[0].role).casefold() != "esoc chair":
+            continue
+        email = _clean(member.user.email)
+        if email:
+            emails.append(email)
+    return list(dict.fromkeys(emails))
+
 
 def _request_details(req: EsocRequest) -> list[tuple[str, str]]:
     details: list[tuple[str, str]] = [
@@ -122,6 +129,14 @@ def send_esoc_request_created(
     *,
     request=None,
 ) -> int:
+    recipients = _esoc_notification_emails()
+    if not recipients:
+        logger.warning(
+            "No ESOC Chair recipients found for notification email",
+            extra={"esoc_request_id": req.id},
+        )
+        return 0
+
     details = _request_details(req)
     attachments = _attachments(req, request=request)
     environ_condition = "DEV - " if settings.DEBUG else ""
@@ -147,7 +162,7 @@ def send_esoc_request_created(
             subject=subject,
             body=text_body,
             from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@tribunal.uc.edu"),
-            to=ESOC_NOTIFICATION_EMAILS,
+            to=recipients,
         )
         msg.attach_alternative(html_body, "text/html")
 
@@ -161,12 +176,12 @@ def send_esoc_request_created(
         if sent_one != 1:
             logger.warning(
                 "ESOC notification email not accepted by backend",
-                extra={"esoc_request_id": req.id, "to": "ecos@mail.uc.edu"},
+                extra={"esoc_request_id": req.id, "to": recipients},
             )
     except Exception:
         logger.exception(
             "ESOC notification email errored",
-            extra={"esoc_request_id": req.id, "to": "ecos@mail.uc.edu"},
+            extra={"esoc_request_id": req.id, "to": recipients},
         )
 
     return sent
