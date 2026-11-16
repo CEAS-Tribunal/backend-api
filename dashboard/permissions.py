@@ -3,6 +3,14 @@ from rest_framework.permissions import BasePermission
 from dashboard.models import ExecMember
 
 
+INNOVATION_CHALLENGE_ROLES = {
+    "innovation challenge chair",
+    "technology chair",
+    "chief of staff",
+    "president",
+}
+
+
 def user_is_treasurer(user) -> bool:
     """Superusers or staff exec members with the Treasurer role."""
     if not user.is_authenticated:
@@ -19,6 +27,20 @@ def user_is_treasurer(user) -> bool:
         if (role_name or "").strip().lower() == "treasurer":
             return True
     return False
+
+
+def user_can_view_innovation_challenge_dashboard(user) -> bool:
+    """Only staff with an approved exec role may access judging results."""
+    if not user.is_authenticated or not user.is_staff:
+        return False
+    try:
+        member = ExecMember.objects.get(user=user)
+    except ExecMember.DoesNotExist:
+        return False
+    return any(
+        (role_name or "").strip().lower() in INNOVATION_CHALLENGE_ROLES
+        for role_name in member.execrole_set.values_list("role", flat=True)
+    )
 
 
 def user_is_org_funding_chair(user) -> bool:
@@ -78,6 +100,14 @@ class IsOrgFundingChairOrSuperuserStaff(BasePermission):
         return user_is_org_funding_chair(request.user)
 
 
+class IsInnovationChallengeDashboardUser(BasePermission):
+    """Allows only the approved staff exec roles to access judging results."""
+
+    message = "Innovation Challenge dashboard access required."
+
+    def has_permission(self, request, view):
+        return user_can_view_innovation_challenge_dashboard(request.user)
+      
 class IsEsocChairOrSuperuserStaff(BasePermission):
     """Allows staff ESOC role holders or superusers to manage ESOC submissions."""
 

@@ -32,6 +32,7 @@ urlpatterns = [
     path('api/org-funding/', include('org_funding.urls'), name='org-funding'),
     path('api/esoc/', include('esoc.urls'), name='esoc'),
      path("api/alumni/", include("alumni.urls"),name='alumni'),
+    path('api/innovation/', include('innovation.urls'), name='innovation'),
 
     # JWT Authentication endpoints (staff-only issuance; see StaffOnlyTokenObtainPairSerializer)
     path('api/token/', StaffOnlyTokenObtainPairView.as_view(), name='token_obtain_pair'),
