@@ -13,11 +13,11 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='judge',
             name='room',
-            field=models.CharField(choices=[('Front of Kautz Attic', 'Front of Kautz Attic'), ('Back of Kautz Attic', 'Back of Kautz Attic'), ('Lindner 4210', 'Lindner 4210')], max_length=120),
+            field=models.CharField(choices=[('Front of Kautz Attic', 'Front of Kautz Attic'), ('Back of Kautz Attic', 'Back of Kautz Attic'), ('Lindner 4245', 'Lindner 4245')], max_length=120),
         ),
         migrations.AlterField(
             model_name='team',
             name='room',
-            field=models.CharField(choices=[('Front of Kautz Attic', 'Front of Kautz Attic'), ('Back of Kautz Attic', 'Back of Kautz Attic'), ('Lindner 4210', 'Lindner 4210')], max_length=120),
+            field=models.CharField(choices=[('Front of Kautz Attic', 'Front of Kautz Attic'), ('Back of Kautz Attic', 'Back of Kautz Attic'), ('Lindner 4245', 'Lindner 4245')], max_length=120),
         ),
     ]
