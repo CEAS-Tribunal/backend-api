@@ -30,8 +30,12 @@ def user_is_treasurer(user) -> bool:
 
 
 def user_can_view_innovation_challenge_dashboard(user) -> bool:
-    """Only staff with an approved exec role may access judging results."""
-    if not user.is_authenticated or not user.is_staff:
+    """Superusers or staff with an approved exec role may access judging results."""
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    if not user.is_staff:
         return False
     try:
         member = ExecMember.objects.get(user=user)
