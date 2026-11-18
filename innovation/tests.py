@@ -49,7 +49,7 @@ class InnovationJudgingAPITests(TestCase):
             status.HTTP_403_FORBIDDEN,
         )
 
-    def test_only_approved_staff_roles_can_read_results(self):
+    def test_only_approved_roles_and_superusers_can_read_results(self):
         unauthorized_staff = User.objects.create_user(
             username="staff-without-dashboard-role",
             password="pass12345",
@@ -69,7 +69,7 @@ class InnovationJudgingAPITests(TestCase):
         self.client.force_authenticate(user=superuser)
         self.assertEqual(
             self.client.get("/api/innovation/results/").status_code,
-            status.HTTP_403_FORBIDDEN,
+            status.HTTP_200_OK,
         )
 
     def test_each_approved_staff_role_can_read_results(self):
