@@ -142,12 +142,12 @@ class InnovationJudgingAPITests(TestCase):
         )
         lindner_judge = self.client.post(
             "/api/innovation/judges/",
-            {"name": "Lindner Judge", "room": InnovationRoom.LINDNER_4210},
+            {"name": "Lindner Judge", "room": InnovationRoom.LINDNER_4245},
             format="json",
         )
         lindner_team = self.client.post(
             "/api/innovation/teams/",
-            {"name": "Lindner Team", "room": InnovationRoom.LINDNER_4210},
+            {"name": "Lindner Team", "room": InnovationRoom.LINDNER_4245},
             format="json",
         )
         self.assertEqual(lindner_judge.status_code, status.HTTP_201_CREATED)
@@ -162,7 +162,7 @@ class InnovationJudgingAPITests(TestCase):
         self.assertEqual(
             self.client.post(
                 "/api/innovation/judges/",
-                {"name": "New Lindner Judge", "room": InnovationRoom.LINDNER_4210},
+                {"name": "New Lindner Judge", "room": InnovationRoom.LINDNER_4245},
                 format="json",
             ).status_code,
             status.HTTP_400_BAD_REQUEST,
@@ -170,7 +170,7 @@ class InnovationJudgingAPITests(TestCase):
         self.assertEqual(
             self.client.post(
                 "/api/innovation/teams/",
-                {"name": "New Lindner Team", "room": InnovationRoom.LINDNER_4210},
+                {"name": "New Lindner Team", "room": InnovationRoom.LINDNER_4245},
                 format="json",
             ).status_code,
             status.HTTP_400_BAD_REQUEST,
@@ -178,7 +178,7 @@ class InnovationJudgingAPITests(TestCase):
         self.assertEqual(
             self.client.patch(
                 f"/api/innovation/judges/{self.judge.id}/",
-                {"room": InnovationRoom.LINDNER_4210},
+                {"room": InnovationRoom.LINDNER_4245},
                 format="json",
             ).status_code,
             status.HTTP_400_BAD_REQUEST,
@@ -186,14 +186,14 @@ class InnovationJudgingAPITests(TestCase):
         self.assertEqual(
             self.client.patch(
                 f"/api/innovation/judges/{lindner_judge.data['id']}/",
-                {"name": "Retained Lindner Judge", "room": InnovationRoom.LINDNER_4210},
+                {"name": "Retained Lindner Judge", "room": InnovationRoom.LINDNER_4245},
                 format="json",
             ).status_code,
             status.HTTP_200_OK,
         )
-        self.assertEqual(lindner_team.data["room"], InnovationRoom.LINDNER_4210)
-        self.assertEqual(Judge.objects.get(pk=lindner_judge.data["id"]).room, InnovationRoom.LINDNER_4210)
-        self.assertEqual(Team.objects.get(pk=lindner_team.data["id"]).room, InnovationRoom.LINDNER_4210)
+        self.assertEqual(lindner_team.data["room"], InnovationRoom.LINDNER_4245)
+        self.assertEqual(Judge.objects.get(pk=lindner_judge.data["id"]).room, InnovationRoom.LINDNER_4245)
+        self.assertEqual(Team.objects.get(pk=lindner_team.data["id"]).room, InnovationRoom.LINDNER_4245)
         self.assertEqual(
             [room["value"] for room in self.client.get("/api/innovation/rooms/").data],
             [
@@ -230,18 +230,18 @@ class InnovationJudgingAPITests(TestCase):
         self.assertEqual(
             self.client.patch(
                 f"/api/innovation/judges/{judge_id}/",
-                {"name": "Morgan L.", "room": InnovationRoom.LINDNER_4210},
+                {"name": "Morgan L.", "room": InnovationRoom.LINDNER_4245},
                 format="json",
             ).data["room"],
-            InnovationRoom.LINDNER_4210,
+            InnovationRoom.LINDNER_4245,
         )
         self.assertEqual(
             self.client.patch(
                 f"/api/innovation/teams/{team_id}/",
-                {"room": InnovationRoom.LINDNER_4210},
+                {"room": InnovationRoom.LINDNER_4245},
                 format="json",
             ).data["room"],
-            InnovationRoom.LINDNER_4210,
+            InnovationRoom.LINDNER_4245,
         )
         self.assertEqual(
             self.client.delete(f"/api/innovation/judges/{judge_id}/").status_code,

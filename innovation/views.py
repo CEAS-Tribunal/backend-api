@@ -83,7 +83,7 @@ class RoomListView(StaffAPIView):
         rooms = [
             room
             for room in InnovationRoom
-            if room != InnovationRoom.LINDNER_4210 or room_count == 3
+            if room != InnovationRoom.LINDNER_4245 or room_count == 3
         ]
         return Response(
             [
