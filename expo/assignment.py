@@ -5,6 +5,7 @@ from ortools.sat.python import cp_model
 
 from .models import JudgeModel, JudgingTimeslots, ProjectCategories, StudentModel
 
+DEFAULT_MIN_JUDGES = 3
 SLOT_KEYS = [key for key, _ in JudgingTimeslots]
 CATEGORY_LABELS = dict(ProjectCategories)
 
@@ -31,13 +32,13 @@ class AssignmentResult:
     shortfalls: list[dict] = field(default_factory=list)
 
 
-def generate_assignments(min_judges=3, max_judges=None, time_limit_s=15.0):
+def generate_assignments(min_judges=DEFAULT_MIN_JUDGES, max_judges=None, time_limit_s=15.0):
     judges = list(JudgeModel.objects.filter(is_backup_judge=False))
     teams = list(StudentModel.objects.all())
     return solve_assignments(judges, teams, min_judges, max_judges, time_limit_s)
 
 
-def solve_assignments(judges, teams, min_judges=3, max_judges=None, time_limit_s=15.0):
+def solve_assignments(judges, teams, min_judges=DEFAULT_MIN_JUDGES, max_judges=None, time_limit_s=15.0):
     """Schedule judges onto teams with CP-SAT.
 
     Priorities, highest first: every team reaches `min_judges`; a team's judges

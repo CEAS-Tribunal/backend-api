@@ -67,6 +67,36 @@ def user_is_expo_staff(user) -> bool:
     return False
 
 
+def user_is_esoc_chair(user) -> bool:
+    """Superusers or staff exec members holding the ESOC role."""
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    if not user.is_staff:
+        return False
+    try:
+        em = ExecMember.objects.get(user=user)
+    except ExecMember.DoesNotExist:
+        return False
+    for role_name in em.execrole_set.values_list("role", flat=True):
+        if (role_name or "").strip().lower() in EXPO_EXEC_ROLES:
+            return True
+    return False
+
+
+class IsExpoStaff(BasePermission):
+    """
+    Allows staff exec members with an EXPO role (see EXPO_EXEC_ROLES) or superusers
+    to manage EXPO registrations. Keep in sync with the frontend EXPOGuard.
+    """
+
+    message = "EXPO access required."
+
+    def has_permission(self, request, view):
+        return user_is_expo_staff(request.user)
+
+
 class IsExpoStaff(BasePermission):
     """
     Allows staff exec members with an EXPO role (see EXPO_EXEC_ROLES) or superusers

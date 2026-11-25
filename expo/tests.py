@@ -6,7 +6,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from dashboard.models import ExecMember, ExecRole
 
-from .assignment import SLOT_KEYS, generate_assignments
+from .assignment import DEFAULT_MIN_JUDGES, SLOT_KEYS, generate_assignments
 from .models import JudgeAssignmentModel, JudgeModel, StudentModel
 
 
@@ -89,6 +89,98 @@ class JudgeCheckInAPITests(TestCase):
         self.assertEqual(r.status_code, status.HTTP_403_FORBIDDEN)
 
 
+@override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"])
+class JudgeRegistrationAPITests(TestCase):
+    url = "/api/expo/judges/register/"
+
+    def setUp(self):
+        self.client = APIClient()
+        self.payload = {
+            "first_name": "Grace",
+            "last_name": "Hopper",
+            "email": "Grace@Example.com",
+            "phone_number": "555-0101",
+            "employer_name": "Navy",
+            "judging_category": ["7", "2", "1"],
+            "judging_timeslot": ["3", "1"],
+            "number_of_projects": 4,
+            "is_backup_judge": False,
+            "is_attending_lunch": True,
+            "lunch_preference": "2",
+            "dietary_restrictions": "",
+        }
+
+    def test_public_registration_creates_judge_without_exposing_pin(self):
+        r = self.client.post(self.url, self.payload, format="json")
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED)
+        self.assertNotIn("judge_pin", r.data)
+        judge = JudgeModel.objects.get()
+        self.assertEqual(judge.email, "grace@example.com")
+        # Rank order must be preserved (not sorted by category id).
+        self.assertEqual(list(judge.judging_category), ["7", "2", "1"])
+        self.assertEqual(list(judge.judging_timeslot), ["1", "3"])
+        self.assertEqual(len(judge.judge_pin), 4)
+        self.assertFalse(judge.has_checked_in)
+
+    def test_ignores_staff_only_fields(self):
+        r = self.client.post(
+            self.url, {**self.payload, "has_checked_in": True, "judge_pin": "0000"}, format="json"
+        )
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(JudgeModel.objects.get().has_checked_in)
+
+    def test_rejects_duplicate_email_case_insensitively(self):
+        self.client.post(self.url, self.payload, format="json")
+        r = self.client.post(
+            self.url, {**self.payload, "email": "grace@example.COM"}, format="json"
+        )
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", r.data)
+
+    def test_requires_category_and_timeslot(self):
+        r = self.client.post(
+            self.url, {**self.payload, "judging_category": [], "judging_timeslot": []}, format="json"
+        )
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("judging_category", r.data)
+        self.assertIn("judging_timeslot", r.data)
+
+    def test_requires_exactly_three_ranked_categories(self):
+        r = self.client.post(
+            self.url, {**self.payload, "judging_category": ["7", "2"]}, format="json"
+        )
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("judging_category", r.data)
+
+        r = self.client.post(
+            self.url, {**self.payload, "judging_category": ["7", "2", "1", "3"]}, format="json"
+        )
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("judging_category", r.data)
+
+    def test_rejects_duplicate_ranked_categories(self):
+        r = self.client.post(
+            self.url, {**self.payload, "judging_category": ["7", "2", "7"]}, format="json"
+        )
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("judging_category", r.data)
+
+    def test_lunch_preference_required_when_attending(self):
+        r = self.client.post(self.url, {**self.payload, "lunch_preference": None}, format="json")
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("lunch_preference", r.data)
+
+    def test_lunch_preference_cleared_when_not_attending(self):
+        r = self.client.post(self.url, {**self.payload, "is_attending_lunch": False}, format="json")
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(JudgeModel.objects.get().lunch_preference)
+
+    def test_rejects_out_of_range_project_count(self):
+        r = self.client.post(self.url, {**self.payload, "number_of_projects": 11}, format="json")
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("number_of_projects", r.data)
+
+
 def make_judge(n, categories, slots, projects=10, backup=False):
     return JudgeModel.objects.create(
         first_name=f"Judge{n}",
@@ -110,9 +202,9 @@ def make_team(n, category):
 
 
 class JudgeAssignmentSolverTests(TestCase):
-    def test_every_team_gets_three_judges_in_distinct_spread_slots(self):
-        for n in range(4):
-            make_judge(n, ["7"], SLOT_KEYS, projects=4)
+    def test_every_team_gets_min_judges_in_distinct_spread_slots(self):
+        for n in range(6):
+            make_judge(n, ["7"], SLOT_KEYS, projects=5)
         teams = [make_team(n, "7") for n in range(5)]
 
         result = generate_assignments()
@@ -121,10 +213,10 @@ class JudgeAssignmentSolverTests(TestCase):
         self.assertEqual(result.shortfalls, [])
         for team in teams:
             mine = [a for a in result.assignments if a.student == team]
-            self.assertEqual(len(mine), 3)
-            self.assertEqual(len({a.judge.id for a in mine}), 3)
+            self.assertEqual(len(mine), DEFAULT_MIN_JUDGES)
+            self.assertEqual(len({a.judge.id for a in mine}), DEFAULT_MIN_JUDGES)
             slots = sorted(SLOT_KEYS.index(a.timeslot) for a in mine)
-            self.assertEqual(len(set(slots)), 3)
+            self.assertEqual(len(set(slots)), DEFAULT_MIN_JUDGES)
             self.assertTrue(all(b - a > 1 for a, b in zip(slots, slots[1:])))
 
     def test_respects_judge_slots_categories_and_capacity(self):
@@ -154,7 +246,7 @@ class JudgeAssignmentSolverTests(TestCase):
             self.assertLessEqual(count, by_id[judge_id].number_of_projects)
 
     def test_backup_judges_are_never_assigned(self):
-        for n in range(3):
+        for n in range(5):
             make_judge(n, ["2"], SLOT_KEYS)
         backup = make_judge(99, ["2"], SLOT_KEYS, backup=True)
         make_team(0, "2")
@@ -189,6 +281,16 @@ class JudgeAssignmentSolverTests(TestCase):
 
         self.assertEqual(len(result.assignments), 5)
 
+    def test_custom_min_judges_overrides_default(self):
+        for n in range(5):
+            make_judge(n, ["5"], SLOT_KEYS)
+        make_team(0, "5")
+
+        result = generate_assignments(min_judges=3)
+
+        self.assertEqual(len(result.assignments), 3)
+        self.assertEqual(result.shortfalls, [])
+
 
 @override_settings(ALLOWED_HOSTS=["testserver", "localhost", "127.0.0.1"])
 class JudgeAssignmentAPITests(TestCase):
@@ -200,7 +302,7 @@ class JudgeAssignmentAPITests(TestCase):
         self.exec_member = ExecMember.objects.create(user=self.user)
         refresh = RefreshToken.for_user(self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
-        self.judges = [make_judge(n, ["7"], SLOT_KEYS, projects=3) for n in range(3)]
+        self.judges = [make_judge(n, ["7"], SLOT_KEYS, projects=2) for n in range(5)]
         self.teams = [make_team(n, "7") for n in range(2)]
 
     def _grant_expo_role(self):
@@ -221,9 +323,10 @@ class JudgeAssignmentAPITests(TestCase):
 
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertEqual(r.data["shortfalls"], [])
-        self.assertEqual(len(r.data["assignments"]), 6)
+        expected = DEFAULT_MIN_JUDGES * len(self.teams)
+        self.assertEqual(len(r.data["assignments"]), expected)
         self.assertFalse(JudgeAssignmentModel.objects.filter(pk=stale.pk).exists())
-        self.assertEqual(JudgeAssignmentModel.objects.count(), 6)
+        self.assertEqual(JudgeAssignmentModel.objects.count(), expected)
 
     def test_generate_rejects_max_below_min(self):
         self._grant_expo_role()

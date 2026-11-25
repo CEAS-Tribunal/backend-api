@@ -1,6 +1,16 @@
 from rest_framework import serializers
 
-from .models import JudgeAssignmentModel, JudgeModel, StudentModel, SubmissionModel
+from rest_framework.validators import UniqueValidator
+
+from .assignment import DEFAULT_MIN_JUDGES
+from .models import (
+    JudgeAssignmentModel,
+    JudgeModel,
+    JudgingTimeslots,
+    ProjectCategories,
+    StudentModel,
+    SubmissionModel,
+)
 
 
 class JudgeSerializer(serializers.ModelSerializer):
@@ -39,6 +49,73 @@ class JudgeSerializer(serializers.ModelSerializer):
 
     def get_judging_timeslot_display(self, obj):
         return list(obj.get_judging_timeslot_list())
+
+
+class JudgeRegistrationSerializer(serializers.ModelSerializer):
+    """Public judge sign-up. Excludes staff-only fields such as the PIN and check-in status."""
+
+    email = serializers.EmailField(
+        validators=[
+            UniqueValidator(
+                queryset=JudgeModel.objects.all(),
+                lookup="iexact",
+                message="A judge with this email is already registered.",
+            )
+        ]
+    )
+    # ListField (not MultipleChoiceField) so 1st/2nd/3rd preference order is preserved.
+    judging_category = serializers.ListField(
+        child=serializers.ChoiceField(choices=ProjectCategories),
+        min_length=3,
+        max_length=3,
+        allow_empty=False,
+    )
+    judging_timeslot = serializers.MultipleChoiceField(choices=JudgingTimeslots, allow_empty=False)
+
+    class Meta:
+        model = JudgeModel
+        fields = [
+            "first_name",
+            "last_name",
+            "email",
+            "phone_number",
+            "employer_name",
+            "judging_category",
+            "judging_timeslot",
+            "number_of_projects",
+            "is_backup_judge",
+            "is_attending_lunch",
+            "lunch_preference",
+            "dietary_restrictions",
+        ]
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
+    def validate_judging_category(self, value):
+        # Preference order is significant: index 0 = 1st, 1 = 2nd, 2 = 3rd.
+        if len(value) != 3:
+            raise serializers.ValidationError(
+                "Choose exactly three ranked categories (1st, 2nd, and 3rd)."
+            )
+        if len(set(value)) != 3:
+            raise serializers.ValidationError(
+                "Each ranked category must be different."
+            )
+        return list(value)
+
+    def validate_judging_timeslot(self, value):
+        return sorted(value, key=int)
+
+    def validate(self, attrs):
+        if attrs.get("is_attending_lunch"):
+            if not attrs.get("lunch_preference"):
+                raise serializers.ValidationError(
+                    {"lunch_preference": "Choose a lunch option if you are attending lunch."}
+                )
+        else:
+            attrs["lunch_preference"] = None
+        return attrs
 
 
 class JudgeCheckInPatchSerializer(serializers.Serializer):
@@ -99,7 +176,7 @@ class JudgeAssignmentSerializer(serializers.ModelSerializer):
 
 
 class GenerateAssignmentsSerializer(serializers.Serializer):
-    min_judges = serializers.IntegerField(min_value=1, max_value=10, default=3)
+    min_judges = serializers.IntegerField(min_value=1, max_value=10, default=DEFAULT_MIN_JUDGES)
     max_judges = serializers.IntegerField(min_value=1, max_value=10, required=False, allow_null=True)
 
     def validate(self, attrs):

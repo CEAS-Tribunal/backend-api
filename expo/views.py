@@ -8,11 +8,12 @@ from .serializers import (
     GenerateAssignmentsSerializer,
     JudgeAssignmentSerializer,
     JudgeCheckInPatchSerializer,
+    JudgeRegistrationSerializer,
     JudgeSerializer,
     StudentSerializer,
 )
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -38,6 +39,21 @@ class JudgeViewSet(viewsets.ModelViewSet):
         judge.has_checked_in = serializer.validated_data["has_checked_in"]
         judge.save(update_fields=["has_checked_in"])
         return Response(JudgeSerializer(judge).data, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[AllowAny],
+        serializer_class=JudgeRegistrationSerializer,
+    )
+    def register(self, request):
+        serializer = JudgeRegistrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        judge = serializer.save()
+        return Response(
+            {"message": f"Thanks, {judge.first_name}! You're registered as an EXPO judge."},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class StudentViewSet(viewsets.ReadOnlyModelViewSet):
