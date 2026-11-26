@@ -6,7 +6,7 @@ from django.db.models.functions import Lower
 class InnovationRoom(models.TextChoices):
     FRONT_OF_KAUTZ_ATTIC = "Front of Kautz Attic", "Front of Kautz Attic"
     BACK_OF_KAUTZ_ATTIC = "Back of Kautz Attic", "Back of Kautz Attic"
-    LINDNER_4210 = "Lindner 4210", "Lindner 4210"
+    LINDNER_4245 = "Lindner 4245", "Lindner 4245"
 
 
 class InnovationRoomConfiguration(models.Model):

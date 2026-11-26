@@ -22,12 +22,12 @@ class InnovationRoomField(serializers.ChoiceField):
 
 def validate_room_is_available(value, instance):
     if (
-        value == InnovationRoom.LINDNER_4210
+        value == InnovationRoom.LINDNER_4245
         and get_innovation_room_configuration().room_count == 2
         and (instance is None or instance.room != value)
     ):
         raise serializers.ValidationError(
-            "Lindner 4210 is only available when 3 rooms are enabled."
+            "Lindner 4245 is only available when 3 rooms are enabled."
         )
     return value
 

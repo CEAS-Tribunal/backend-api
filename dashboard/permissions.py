@@ -30,8 +30,12 @@ def user_is_treasurer(user) -> bool:
 
 
 def user_can_view_innovation_challenge_dashboard(user) -> bool:
-    """Only staff with an approved exec role may access judging results."""
-    if not user.is_authenticated or not user.is_staff:
+    """Superusers or staff with an approved exec role may access judging results."""
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    if not user.is_staff:
         return False
     try:
         member = ExecMember.objects.get(user=user)
@@ -101,10 +105,7 @@ def user_is_esoc_chair(user) -> bool:
         em = ExecMember.objects.get(user=user)
     except ExecMember.DoesNotExist:
         return False
-    for role_name in em.execrole_set.values_list("role", flat=True):
-        if (role_name or "").strip().lower() in EXPO_EXEC_ROLES:
-            return True
-    return False
+    return any((role_name or "").strip().lower() == "esoc" for role_name in em.execrole_set.values_list("role", flat=True))
 
 
 class IsExpoStaff(BasePermission):
@@ -161,6 +162,7 @@ class IsInnovationChallengeDashboardUser(BasePermission):
 
     def has_permission(self, request, view):
         return user_can_view_innovation_challenge_dashboard(request.user)
+
 class IsEsocChairOrSuperuserStaff(BasePermission):
     """Allows staff ESOC role holders or superusers to manage ESOC submissions."""
 
